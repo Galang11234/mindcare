@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import '../../services/storage_service.dart';
 import '../../models/models.dart';
 import '../../utils/app_theme.dart';
@@ -19,6 +20,7 @@ class _JournalScreenState extends State<JournalScreen> {
   @override
   void initState() {
     super.initState();
+    initializeDateFormatting('id', null);
     _loadEntries();
   }
 
@@ -28,15 +30,22 @@ class _JournalScreenState extends State<JournalScreen> {
   }
 
   void _openEditor({JournalEntry? entry}) {
-    Navigator.of(context)
-        .push(MaterialPageRoute(
-          builder: (_) => _JournalEditorScreen(entry: entry),
-        ))
-        .then((_) => _loadEntries());
+    Navigator.of(context).push(PageRouteBuilder(
+      transitionDuration: const Duration(milliseconds: 400),
+      pageBuilder: (context, animation, secondaryAnimation) =>
+          _JournalEditorScreen(entry: entry),
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        const begin = Offset(1.0, 0.0);
+        const end = Offset.zero;
+        final tween = Tween(begin: begin, end: end)
+            .chain(CurveTween(curve: Curves.easeOutCubic));
+        return SlideTransition(position: animation.drive(tween), child: child);
+      },
+    )).then((_) => _loadEntries());
   }
 
-  Future<void> _deleteEntry(String id) async {
-    final confirmed = await showDialog<bool>(
+  Future<bool?> _confirmDeletion() async {
+    return await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Hapus Jurnal?'),
@@ -52,10 +61,6 @@ class _JournalScreenState extends State<JournalScreen> {
         ],
       ),
     );
-    if (confirmed == true) {
-      await StorageService.deleteJournalEntry(id);
-      _loadEntries();
-    }
   }
 
   @override
@@ -103,15 +108,32 @@ class _JournalScreenState extends State<JournalScreen> {
   }
 
   Widget _buildList() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _entries.length,
-      itemBuilder: (ctx, i) {
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+            child: Text('Kisah perjalananmu,\ntersimpan dengan aman. ✨',
+                style: GoogleFonts.nunito(
+                    fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.textMedium)),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate((ctx, i) {
         final entry = _entries[i];
         return Dismissible(
           key: Key(entry.id),
           direction: DismissDirection.endToStart,
-          onDismissed: (_) => _deleteEntry(entry.id),
+          confirmDismiss: (direction) => _confirmDeletion(),
+          onDismissed: (_) async {
+            await StorageService.deleteJournalEntry(entry.id);
+            setState(() {
+              _entries.removeAt(i);
+            });
+          },
           background: Container(
             alignment: Alignment.centerRight,
             padding: const EdgeInsets.only(right: 24),
@@ -129,7 +151,10 @@ class _JournalScreenState extends State<JournalScreen> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 8))
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -207,7 +232,10 @@ class _JournalScreenState extends State<JournalScreen> {
             ),
           ),
         );
-      },
+            }, childCount: _entries.length),
+          ),
+        ),
+      ],
     );
   }
 }

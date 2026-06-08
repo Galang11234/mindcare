@@ -1,7 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/storage_service.dart';
-import '../utils/app_theme.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -15,6 +16,7 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _controller;
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleAnim;
+  Timer? _navigateTimer;
 
   @override
   void initState() {
@@ -30,11 +32,10 @@ class _SplashScreenState extends State<SplashScreen>
       CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
     );
     _controller.forward();
-    _navigate();
+    _navigateTimer = Timer(const Duration(seconds: 2), _navigate);
   }
 
   Future<void> _navigate() async {
-    await Future.delayed(const Duration(seconds: 2));
     if (!mounted) return;
     final onboarded = await StorageService.isOnboarded();
     final loggedIn = await StorageService.isLoggedIn();
@@ -50,6 +51,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
+    _navigateTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }

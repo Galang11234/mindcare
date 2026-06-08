@@ -1,51 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/date_symbol_data_local.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
+import 'package:provider/provider.dart';
 import 'screens/splash_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/main_screen.dart';
 import 'utils/app_theme.dart';
+import 'utils/theme_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Inisialisasi locale Indonesia
-  await initializeDateFormatting('id', null);
-
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
-
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ThemeProvider(),
+      child: const MindCareApp(),
     ),
   );
-
-  runApp(const MindCareApp());
 }
 
 class MindCareApp extends StatelessWidget {
   const MindCareApp({super.key});
-
   @override
   Widget build(BuildContext context) {
+    final themeProvider = context.watch<ThemeProvider>();
     return MaterialApp(
       title: 'MindCare',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-
-      // Locale aplikasi
-      locale: const Locale('id', 'ID'),
-
+      darkTheme: AppTheme.darkTheme,
+      themeMode: themeProvider.mode,
       home: const SplashScreen(),
-
       routes: {
-        '/onboarding': (ctx) => const OnboardingScreen(),
-        '/main': (ctx) => const MainScreen(),
+        '/onboarding': (_) => const OnboardingScreen(),
+        '/main': (_) => const MainScreen(),
       },
     );
   }
