@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import '../services/storage_service.dart';
-import '../models/models.dart';
-import '../utils/app_theme.dart';
 import 'auth/login_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {

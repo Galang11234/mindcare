@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 // ─── Mood Entry ─────────────────────────────────────────────────────────────
 class MoodEntry {
   final String id;

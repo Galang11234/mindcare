@@ -16,6 +16,11 @@ class AppTheme {
   static const Color warning = Color(0xFFFDCB6E);
   static const Color danger = Color(0xFFE17055);
 
+  // Additional Colors
+  static const Color teal = Color(0xFF0D9488);
+  static const Color tealDk = Color(0xFF0F766E);
+  static const Color gold = Color(0xFFF59E0B);
+
   // Mood Colors
   static const Color moodGreat = Color(0xFF00B894);
   static const Color moodGood = Color(0xFF4ECDC4);

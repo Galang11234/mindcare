@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../services/storage_service.dart';
+import '../../services/auth_service.dart';
 import '../../models/models.dart';
 import '../../utils/app_theme.dart';
 import '../main_screen.dart';
@@ -24,35 +24,59 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String _selectedAvatar = '😊';
 
   Future<void> _register() async {
-    if (_nameCtrl.text.isEmpty ||
-        _emailCtrl.text.isEmpty ||
-        _passCtrl.text.isEmpty) {
-      setState(() => _error = 'Semua kolom wajib diisi');
-      return;
-    }
-    if (!_emailCtrl.text.contains('@')) {
-      setState(() => _error = 'Format email tidak valid');
-      return;
-    }
-    if (_passCtrl.text.length < 6) {
-      setState(() => _error = 'Password minimal 6 karakter');
-      return;
-    }
-    setState(() { _loading = true; _error = null; });
-    final user = UserProfile(
-      name: _nameCtrl.text.trim(),
-      email: _emailCtrl.text.trim(),
-      avatarEmoji: _selectedAvatar,
-      createdAt: DateTime.now(),
-    );
-    await StorageService.saveUser(user);
-    await StorageService.setLoggedIn(true);
-    if (!mounted) return;
+  if (_nameCtrl.text.isEmpty ||
+      _emailCtrl.text.isEmpty ||
+      _passCtrl.text.isEmpty) {
+    setState(() => _error = 'Semua kolom wajib diisi');
+    return;
+  }
+
+  if (!_emailCtrl.text.contains('@')) {
+    setState(() => _error = 'Format email tidak valid');
+    return;
+  }
+
+  if (_passCtrl.text.length < 6) {
+    setState(() => _error = 'Password minimal 6 karakter');
+    return;
+  }
+
+  setState(() {
+    _loading = true;
+    _error = null;
+  });
+
+  final result = await AuthService.signUpWithEmail(
+    email: _emailCtrl.text.trim(),
+    password: _passCtrl.text.trim(),
+    fullName: _nameCtrl.text.trim(),
+    avatarEmoji: _selectedAvatar,
+
+    
+  );
+  print("REGISTER SUCCESS = ${result.isSuccess}");
+print("REGISTER ERROR = ${result.error}");
+
+
+  if (!mounted) return;
+
+  setState(() {
+    _loading = false;
+  });
+
+  if (result.isSuccess) {
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const MainScreen()),
+      MaterialPageRoute(
+        builder: (_) => const MainScreen(),
+      ),
       (route) => false,
     );
+  } else {
+    setState(() {
+      _error = result.error;
+    });
   }
+}
 
   @override
   void dispose() {

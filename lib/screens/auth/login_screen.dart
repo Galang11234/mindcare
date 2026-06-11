@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../services/storage_service.dart';
-import '../../models/models.dart';
+import '../../services/auth_service.dart';
 import '../../utils/app_theme.dart';
 import 'register_screen.dart';
 import '../main_screen.dart';
@@ -21,27 +20,50 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _error;
 
   Future<void> _login() async {
-    if (_emailCtrl.text.isEmpty || _passCtrl.text.isEmpty) {
-      setState(() => _error = 'Email dan password wajib diisi');
-      return;
-    }
-    setState(() { _loading = true; _error = null; });
-    await Future.delayed(const Duration(milliseconds: 800));
-    final user = await StorageService.getUser();
-    if (user != null && user.email == _emailCtrl.text.trim()) {
-      await StorageService.setLoggedIn(true);
-      if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainScreen()),
-        (route) => false,
-      );
-    } else {
+  if (_emailCtrl.text.isEmpty || _passCtrl.text.isEmpty) {
+    setState(() {
+      _error = 'Email dan password wajib diisi';
+    });
+    return;
+  }
+
+  setState(() {
+    _loading = true;
+    _error = null;
+  });
+
+  try {
+    final result = await AuthService.signInWithEmail(
+      email: _emailCtrl.text.trim(),
+      password: _passCtrl.text.trim(),
+    );
+
+    if (!result.isSuccess) {
       setState(() {
         _loading = false;
-        _error = 'Email tidak ditemukan. Daftar terlebih dahulu.';
+        _error = result.error;
       });
+      return;
     }
+
+    if (!mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => const MainScreen(),
+      ),
+      (route) => false,
+    );
+  } catch (e) {
+    setState(() {
+      _error = e.toString();
+    });
   }
+
+  setState(() {
+    _loading = false;
+  });
+}
 
   @override
   void dispose() {

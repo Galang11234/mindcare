@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../services/storage_service.dart';
+import '../../models/user_model.dart';
 import '../../models/models.dart';
 import '../../utils/app_theme.dart';
 import '../../data/article_data.dart';

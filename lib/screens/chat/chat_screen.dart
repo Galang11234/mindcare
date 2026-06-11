@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../models/models.dart';
+import 'package:intl/intl.dart';
 import '../../utils/app_theme.dart';
+import '../../services/chatbot_service.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -12,29 +14,50 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
-  final List<ChatMessage> _messages = [];
+class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
+  final List<_Msg> _messages = [];
   final _ctrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   bool _typing = false;
   bool _useAI = false;
   String? _apiKey;
+  List<String> _suggestions = [];
+  String? _currentTopic;
 
   static const _systemPrompt =
-      'Kamu adalah MindCare Assistant, pendamping kesehatan mental yang empatik dan hangat dalam Bahasa Indonesia. '
-      'Tugasmu: mendengarkan dengan empati, memberikan dukungan emosional, saran praktis berbasis evidence, '
-      'merekomendasikan fitur MindCare (Mood Tracker, Jurnal, Relaksasi, Tes DASS-21), dan mengarahkan ke profesional jika serius. '
-      'Aturan: gunakan Bahasa Indonesia hangat, jangan diagnosis medis, jika ada tanda bahaya berikan hotline 119 ext 8, '
-      'respons 2-4 kalimat dengan emoji secukupnya, tanyakan follow-up.';
+    'Kamu adalah MindCare Assistant, sahabat kesehatan mental yang empatik dan natural dalam Bahasa Indonesia sehari-hari.\n\n'
+    'KEPRIBADIAN: Hangat seperti sahabat peduli, bukan terapis kaku. Gunakan "kamu" dan "aku". '
+    'Sesekali pakai bahasa natural: "banget", "lho", "ya", "dong". '
+    'Empati DULU sebelum saran. Tanya satu follow-up di setiap respons.\n\n'
+    'ATURAN: Respons 2-4 kalimat, fokus. Gunakan 1-2 emoji natural. '
+    'JANGAN langsung kasih solusi — dengarkan dan validasi dulu. '
+    'Tanda bahaya → berikan hotline 119 ext 8. '
+    'Akhiri dengan pertanyaan atau undangan bercerita.';
 
   @override
   void initState() {
     super.initState();
+    ChatbotService.resetContext();
+    _suggestions = ChatbotService.getSuggestions(null);
     _loadApiKey();
-    _messages.add(ChatMessage(
-      id: '0', isUser: false, time: DateTime.now(),
-      text: 'Halo! Saya MindCare Assistant 🌿\n\nSaya di sini untuk mendengarkan dan menemanimu. Bagaimana perasaanmu hari ini?',
-    ));
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) _addBotMsg(_welcomeMsg());
+    });
+  }
+
+  String _welcomeMsg() {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Selamat pagi! ☀️ Senang kamu mampir ke sini. Aku MindCare Assistant — teman curhatmu.\n\nBagaimana perasaanmu pagi ini?';
+    if (h < 17) return 'Halo! 🌿 Semoga harimu menyenangkan. Ada yang ingin kamu ceritakan hari ini?';
+    if (h < 20) return 'Selamat sore! 🌅 Waktunya istirahat sejenak. Aku di sini kalau kamu mau ngobrol.\n\nGimana harimu tadi?';
+    return 'Selamat malam 🌙 Aku di sini kalau kamu butuh melepaskan penat.\n\nBagaimana harimu hari ini?';
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _scrollCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadApiKey() async {
@@ -45,51 +68,86 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    _scrollCtrl.dispose();
-    super.dispose();
+  void _addBotMsg(String text) {
+    if (!mounted) return;
+    setState(() {
+      _messages.add(_Msg(
+        id: '${DateTime.now().millisecondsSinceEpoch}',
+        text: text, isUser: false, time: DateTime.now()));
+    });
+    _scrollToBottom();
   }
 
-  void _scrollToBottom() => Future.delayed(const Duration(milliseconds: 150), () {
-    if (_scrollCtrl.hasClients) {
-      _scrollCtrl.animateTo(_scrollCtrl.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-    }
-  });
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (_scrollCtrl.hasClients) {
+        _scrollCtrl.animateTo(_scrollCtrl.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 400), curve: Curves.easeOutCubic);
+      }
+    });
+  }
 
   Future<void> _send([String? text]) async {
     final msg = (text ?? _ctrl.text).trim();
-    if (msg.isEmpty) return;
+    if (msg.isEmpty || _typing) return;
     _ctrl.clear();
+    HapticFeedback.lightImpact();
+
     setState(() {
-      _messages.add(ChatMessage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          text: msg, isUser: true, time: DateTime.now()));
+      _messages.add(_Msg(
+        id: '${DateTime.now().millisecondsSinceEpoch}',
+        text: msg, isUser: true, time: DateTime.now()));
       _typing = true;
+      _suggestions = [];
     });
     _scrollToBottom();
+
+    final delay = (600 + msg.length * 12).clamp(500, 1800);
+    await Future.delayed(Duration(milliseconds: delay));
+
+    String response;
     if (_useAI && _apiKey != null) {
-      await _aiResponse(msg);
+      response = await _callClaude(msg);
     } else {
-      await Future.delayed(const Duration(milliseconds: 700));
-      if (!mounted) return;
-      setState(() {
-        _typing = false;
-        _messages.add(ChatMessage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          text: _rule(msg), isUser: false, time: DateTime.now()));
-      });
+      final history = _messages
+          .map((m) => {'role': m.isUser ? 'user' : 'assistant', 'content': m.text})
+          .toList();
+      response = ChatbotService.respond(msg, history);
     }
+
+    _currentTopic = _detectTopic(msg);
+    if (!mounted) return;
+    setState(() {
+      _typing = false;
+      _messages.add(_Msg(
+        id: '${DateTime.now().millisecondsSinceEpoch}b',
+        text: response, isUser: false, time: DateTime.now()));
+      _suggestions = ChatbotService.getSuggestions(_currentTopic);
+    });
     _scrollToBottom();
   }
 
-  Future<void> _aiResponse(String userMsg) async {
+  String? _detectTopic(String m) {
+    final ml = m.toLowerCase();
+    if (['stres','tertekan','burnout','capek'].any((k) => ml.contains(k))) return 'stress';
+    if (['cemas','khawatir','takut','panik'].any((k) => ml.contains(k))) return 'anxiety';
+    if (['sedih','nangis','kesepian'].any((k) => ml.contains(k))) return 'sadness';
+    if (['tidur','insomnia','begadang'].any((k) => ml.contains(k))) return 'sleep';
+    return null;
+  }
+
+  Future<String> _callClaude(String userMsg) async {
     try {
-      final history = _messages.where((m) => m.id != '0')
-          .map((m) => {'role': m.isUser ? 'user' : 'assistant', 'content': m.text})
-          .toList();
+      // Build history (max 16 turns)
+      final history = <Map<String,String>>[];
+      for (final m in _messages.reversed.take(16).toList().reversed) {
+        if (history.isEmpty && !m.isUser) continue;
+        history.add({'role': m.isUser ? 'user' : 'assistant', 'content': m.text});
+      }
+      if (history.isEmpty || history.last['role'] == 'assistant') {
+        history.add({'role': 'user', 'content': userMsg});
+      }
+
       final res = await http.post(
         Uri.parse('https://api.anthropic.com/v1/messages'),
         headers: {
@@ -98,102 +156,117 @@ class _ChatScreenState extends State<ChatScreen> {
           'anthropic-version': '2023-06-01',
         },
         body: jsonEncode({
-          'model': 'claude-3-5-sonnet-20240620',
-          'max_tokens': 500,
+          'model': 'claude-sonnet-4-20250514',
+          'max_tokens': 350,
           'system': _systemPrompt,
           'messages': history,
         }),
-      );
-      if (!mounted) return;
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        setState(() {
-          _typing = false;
-          _messages.add(ChatMessage(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            text: data['content'][0]['text'] as String,
-            isUser: false, time: DateTime.now()));
-        });
-      } else {
-        final fallback = _rule(userMsg);
-        setState(() {
-          _typing = false;
-          _messages.add(ChatMessage(
-            id: 'err', text: 'Gagal konek AI. Pakai mode offline.',
-            isUser: false, time: DateTime.now()));
-        });
-        _messages.add(ChatMessage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          text: fallback, isUser: false, time: DateTime.now()));
-        setState(() {});
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() { _typing = false; });
-    }
-  }
+      ).timeout(const Duration(seconds: 20));
 
-  String _rule(String msg) {
-    final m = msg.toLowerCase();
-    if (m.contains('stres') || m.contains('tertekan') || m.contains('lelah') || m.contains('burnout'))
-      return 'Saya mengerti kamu sedang merasa tertekan 😔 Itu sangat wajar. Coba tarik napas dalam-dalam — hirup 4 detik, tahan 4, hembuskan 4. Apa yang paling menjadi bebanmu saat ini?';
-    if (m.contains('cemas') || m.contains('khawatir') || m.contains('takut') || m.contains('panik'))
-      return 'Kecemasan itu sangat melelahkan 💙 Tapi ingat, ini akan berlalu. Coba teknik grounding: perhatikan 5 hal yang kamu lihat, 4 yang bisa kamu sentuh, 3 yang kamu dengar. Apa yang membuatmu cemas?';
-    if (m.contains('sedih') || m.contains('depresi') || m.contains('menangis') || m.contains('putus asa'))
-      return 'Terima kasih sudah percaya berbagi denganku 🌸 Merasa sedih itu manusiawi. Jika perasaan ini berlangsung lebih dari 2 minggu, pertimbangkan berbicara dengan profesional. Ada yang ingin kamu ceritakan?';
-    if (m.contains('tidur') || m.contains('insomnia') || m.contains('begadang'))
-      return 'Gangguan tidur sangat berpengaruh pada kesehatan mental 🌙 Coba matikan layar 1 jam sebelum tidur dan gunakan fitur Relaksasi di MindCare untuk membantu tidur lebih nyenyak.';
-    if (m.contains('baik') || m.contains('senang') || m.contains('bahagia'))
-      return 'Senang sekali mendengar itu! 🌟 Momen positif ini layak dirayakan. Yuk catat di Mood Tracker supaya kamu bisa melihat polanya nanti!';
-    if (m.contains('terima kasih') || m.contains('makasih'))
-      return 'Sama-sama! 😊 Ingat, merawat kesehatan mental adalah bentuk cinta pada dirimu sendiri. Semangat ya! 💚';
-    if (m.contains('meditasi') || m.contains('relaksasi'))
-      return 'Pilihan yang bagus! 🧘 Cek menu Relaksasi di MindCare — ada 6 latihan pernapasan dan meditasi terpandu yang bisa kamu coba kapan saja.';
-    if (m.contains('jurnal') || m.contains('nulis'))
-      return 'Menulis jurnal sangat membantu memproses perasaan ✍️ Coba fitur Jurnal Harian di MindCare — tidak perlu panjang, cukup 5-10 menit saja!';
-    return 'Saya mendengarmu 💙 Ceritakan lebih lanjut apa yang kamu rasakan. Saya di sini bersamamu, tidak ke mana-mana.';
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body)['content'][0]['text'] as String;
+      }
+      return ChatbotService.respond(userMsg, []);
+    } catch (_) {
+      return ChatbotService.respond(userMsg, []);
+    }
   }
 
   void _showApiDialog() async {
     final ctrl = TextEditingController(text: _apiKey ?? '');
+    bool obscure = true;
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.card(context),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(children: [
-          const Text('✨', style: TextStyle(fontSize: 24)),
-          const SizedBox(width: 10),
-          Text('Aktifkan Claude AI', style: GoogleFonts.nunito(
-              fontWeight: FontWeight.w700, color: AppTheme.text(context))),
-        ]),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Masukkan Anthropic API key untuk mendapatkan respons AI yang lebih cerdas dan empatik.',
-              style: GoogleFonts.poppins(fontSize: 13, color: AppTheme.textMed(context))),
-          const SizedBox(height: 16),
-          TextField(controller: ctrl,
-            decoration: const InputDecoration(
-                hintText: 'sk-ant-api03-...', prefixIcon: Icon(Icons.key_outlined)),
-            obscureText: true,
-          ),
-          const SizedBox(height: 8),
-          Row(children: [
-            const Icon(Icons.lock_outline, size: 12, color: AppTheme.success),
-            const SizedBox(width: 4),
-            Expanded(child: Text('Key hanya tersimpan di perangkat ini.',
-                style: GoogleFonts.poppins(fontSize: 10, color: AppTheme.success))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          backgroundColor: AppTheme.card(context),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [Color(0xFF6C5CE7), Color(0xFFA855F7)]),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.auto_awesome, color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Text('Claude AI', style: GoogleFonts.nunito(
+                fontWeight: FontWeight.w800, fontSize: 17, color: AppTheme.text(context))),
           ]),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
-          ElevatedButton(onPressed: () async {
-            final key = ctrl.text.trim();
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setString('claude_api_key', key);
-            setState(() { _apiKey = key.isEmpty ? null : key; _useAI = key.isNotEmpty; });
-            if (ctx.mounted) Navigator.pop(ctx);
-          }, child: const Text('Aktifkan')),
-        ],
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF6C5CE7).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text('Aktifkan Claude AI untuk chatbot yang lebih natural, empatik, dan cerdas.',
+                  style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFF6C5CE7))),
+            ),
+            const SizedBox(height: 16),
+            Text('Anthropic API Key', style: GoogleFonts.poppins(
+                fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.text(context))),
+            const SizedBox(height: 8),
+            TextField(
+              controller: ctrl, obscureText: obscure,
+              style: GoogleFonts.poppins(fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'sk-ant-api03-...',
+                prefixIcon: const Icon(Icons.key_outlined),
+                suffixIcon: IconButton(
+                  icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                  onPressed: () => setS(() => obscure = !obscure)),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(children: [
+              const Icon(Icons.shield_outlined, size: 13, color: AppTheme.success),
+              const SizedBox(width: 6),
+              Text('Tersimpan lokal di perangkat ini',
+                  style: GoogleFonts.poppins(fontSize: 11, color: AppTheme.success)),
+            ]),
+            if (_apiKey != null) ...[
+              const SizedBox(height: 12),
+              GestureDetector(
+                onTap: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.remove('claude_api_key');
+                  setState(() { _apiKey = null; _useAI = false; });
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+                child: Container(
+                  width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.danger.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.danger.withOpacity(0.3)),
+                  ),
+                  child: Text('Hapus API Key', textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                          color: AppTheme.danger, fontWeight: FontWeight.w600, fontSize: 13)),
+                ),
+              ),
+            ],
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.auto_awesome, size: 14),
+              label: const Text('Aktifkan'),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6C5CE7)),
+              onPressed: () async {
+                final key = ctrl.text.trim();
+                if (key.isNotEmpty) {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setString('claude_api_key', key);
+                  setState(() { _apiKey = key; _useAI = true; });
+                }
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -201,233 +274,161 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = AppTheme.isDark(context);
-    final suggestions = [
-      'Saya sedang stres 😓', 'Saya merasa cemas 😰',
-      'Saya tidak bisa tidur 😴', 'Rekomendasikan relaksasi 🧘',
-    ];
     return Scaffold(
-      backgroundColor: AppTheme.bg(context),
-      appBar: AppBar(
-        backgroundColor: AppTheme.card(context),
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: AppTheme.text(context)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Row(children: [
-          Container(
-            width: 38, height: 38,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                  colors: [AppTheme.primary, AppTheme.primaryDark]),
-              shape: BoxShape.circle,
-            ),
-            child: const Center(child: Text('🌿', style: TextStyle(fontSize: 20))),
-          ),
-          const SizedBox(width: 10),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('MindCare Assistant', style: GoogleFonts.nunito(
-                fontWeight: FontWeight.w800, fontSize: 15,
-                color: AppTheme.text(context))),
-            Text(_useAI ? '✨ Claude AI aktif' : '🤖 Mode offline',
-                style: GoogleFonts.poppins(fontSize: 10,
-                    color: _useAI ? AppTheme.primary : AppTheme.textLt(context))),
-          ]),
-        ]),
-        actions: [
-          GestureDetector(
-            onTap: _showApiDialog,
-            child: Container(
-              margin: const EdgeInsets.only(right: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: _useAI
-                    ? AppTheme.primary.withOpacity(0.15)
-                    : (isDark ? AppTheme.bgCard2Dark : Colors.grey.shade100),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                    color: _useAI ? AppTheme.primary : Colors.transparent),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.psychology_outlined,
-                    size: 16, color: _useAI ? AppTheme.primary : AppTheme.textLt(context)),
-                const SizedBox(width: 4),
-                Text('AI', style: GoogleFonts.poppins(
-                    fontSize: 11, fontWeight: FontWeight.w700,
-                    color: _useAI ? AppTheme.primary : AppTheme.textLt(context))),
-              ]),
-            ),
-          ),
-        ],
-      ),
+      backgroundColor: isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF0F4F8),
+      appBar: _appBar(isDark),
       body: Column(children: [
-        Expanded(
-          child: ListView.builder(
-            controller: _scrollCtrl,
-            padding: const EdgeInsets.all(16),
-            itemCount: _messages.length + (_typing ? 1 : 0),
-            itemBuilder: (ctx, i) {
-              if (_typing && i == _messages.length) return const _TypingBubble();
-              return _Bubble(msg: _messages[i]);
-            },
-          ),
-        ),
-
-        // Suggestions strip
-        if (_messages.length <= 2)
-          Container(
-            color: AppTheme.card(context),
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('  Mulai dengan:', style: GoogleFonts.poppins(
-                  fontSize: 10, color: AppTheme.textLt(context))),
-              const SizedBox(height: 6),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(children: suggestions.map((s) => GestureDetector(
-                  onTap: () => _send(s),
-                  child: Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppTheme.primary.withOpacity(0.3)),
-                    ),
-                    child: Text(s, style: GoogleFonts.poppins(
-                        fontSize: 12, color: AppTheme.primary, fontWeight: FontWeight.w500)),
-                  ),
-                )).toList()),
-              ),
-              const SizedBox(height: 6),
-            ]),
-          ),
-
-        // Input bar
-        Container(
-          padding: EdgeInsets.fromLTRB(20, 10, 20,
-              MediaQuery.of(context).viewInsets.bottom > 0 ? 10 : 20),
-          decoration: BoxDecoration(
-            color: Colors.transparent,
-          ),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppTheme.card(context),
-              borderRadius: BorderRadius.circular(35),
-              boxShadow: [BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 20, offset: const Offset(0, 5))],
-            ),
-            child: Row(children: [
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                ),
-                child: TextField(
-                  controller: _ctrl,
-                  maxLines: null,
-                  textCapitalization: TextCapitalization.sentences,
-                  style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.text(context)),
-                  decoration: InputDecoration(
-                    hintText: 'Ceritakan perasaanmu...',
-                    hintStyle: GoogleFonts.poppins(
-                        fontSize: 14, color: AppTheme.textLt(context)),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  ),
-                  onSubmitted: (_) => _send(),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              child: GestureDetector(
-                onTap: _typing ? null : _send,
-                child: Container(
-                  width: 44, height: 44,
-                  decoration: BoxDecoration(
-                    gradient: _typing
-                        ? null
-                        : const LinearGradient(
-                            colors: [AppTheme.primary, AppTheme.primaryDark]),
-                    color: _typing ? AppTheme.textLt(context) : null,
-                    shape: BoxShape.circle,
-                    boxShadow: _typing ? [] : [BoxShadow(
-                      color: AppTheme.primary.withOpacity(0.4),
-                      blurRadius: 8, offset: const Offset(0, 3))],
-                  ),
-                  child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                ),
-              ),
-            ), const SizedBox(width: 4),
-          ]),
-        ),),
+        Expanded(child: _msgList()),
+        if (_suggestions.isNotEmpty) _suggestionsBar(),
+        _inputBar(isDark),
       ]),
     );
   }
-}
 
-class _Bubble extends StatelessWidget {
-  final ChatMessage msg;
-  const _Bubble({required this.msg});
-  @override
-  Widget build(BuildContext context) {
+  AppBar _appBar(bool isDark) => AppBar(
+    backgroundColor: isDark ? const Color(0xFF111111) : Colors.white,
+    elevation: 0,
+    leading: IconButton(
+      icon: Icon(Icons.arrow_back_ios_new, color: AppTheme.text(context), size: 18),
+      onPressed: () => Navigator.pop(context),
+    ),
+    title: Row(children: [
+      Stack(children: [
+        Container(
+          width: 38, height: 38,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(colors: [AppTheme.primary, AppTheme.primaryDark]),
+            shape: BoxShape.circle,
+          ),
+          child: const Center(child: Text('🌿', style: TextStyle(fontSize: 18))),
+        ),
+        Positioned(right: 0, bottom: 0,
+          child: Container(width: 11, height: 11,
+            decoration: BoxDecoration(
+              color: AppTheme.success, shape: BoxShape.circle,
+              border: Border.all(color: isDark ? const Color(0xFF111111) : Colors.white, width: 2),
+            ),
+          ),
+        ),
+      ]),
+      const SizedBox(width: 10),
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('MindCare Assistant', style: GoogleFonts.nunito(
+            fontWeight: FontWeight.w800, fontSize: 14, color: AppTheme.text(context))),
+        Text(
+          _typing ? 'sedang mengetik...' : _useAI ? '✨ Claude AI' : '🤖 Mode offline',
+          style: GoogleFonts.poppins(fontSize: 10,
+              color: _typing ? AppTheme.primary : _useAI ? AppTheme.success : AppTheme.textLt(context)),
+        ),
+      ]),
+    ]),
+    actions: [
+      GestureDetector(
+        onTap: _showApiDialog,
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(0, 10, 12, 10),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            gradient: _useAI ? const LinearGradient(
+                colors: [Color(0xFF6C5CE7), Color(0xFFA855F7)]) : null,
+            color: _useAI ? null : AppTheme.card2(context),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.auto_awesome, size: 13,
+                color: _useAI ? Colors.white : AppTheme.textLt(context)),
+            const SizedBox(width: 4),
+            Text('AI', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700,
+                color: _useAI ? Colors.white : AppTheme.textLt(context))),
+          ]),
+        ),
+      ),
+    ],
+  );
+
+  Widget _msgList() => ListView.builder(
+    controller: _scrollCtrl,
+    padding: const EdgeInsets.fromLTRB(14, 16, 14, 8),
+    itemCount: _messages.length + (_typing ? 1 : 0),
+    itemBuilder: (ctx, i) {
+      if (_typing && i == _messages.length) return const _TypingBubble();
+      final m = _messages[i];
+      final prev = i > 0 ? _messages[i-1] : null;
+      final showTime = prev == null || m.time.difference(prev.time).inMinutes > 5;
+      return Column(children: [
+        if (showTime) _timestamp(m.time),
+        _bubble(m, i),
+      ]);
+    },
+  );
+
+  Widget _timestamp(DateTime t) {
+    final now = DateTime.now();
+    final isToday = t.year == now.year && t.month == now.month && t.day == now.day;
+    final label = isToday ? DateFormat('HH:mm').format(t) : DateFormat('d MMM, HH:mm', 'id').format(t);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Center(child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppTheme.card2(context), borderRadius: BorderRadius.circular(20)),
+        child: Text(label, style: GoogleFonts.poppins(
+            fontSize: 10, color: AppTheme.textLt(context))),
+      )),
+    );
+  }
+
+  Widget _bubble(_Msg msg, int idx) {
     final isUser = msg.isUser;
     final isDark = AppTheme.isDark(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      padding: EdgeInsets.only(
+        left: isUser ? 54 : 0, right: isUser ? 0 : 54, bottom: 6),
       child: Row(
         mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isUser) ...[
-            Container(
-              width: 34, height: 34,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                    colors: [AppTheme.primary, AppTheme.primaryDark]),
-                shape: BoxShape.circle,
-              ),
-              child: const Center(child: Text('🌿', style: TextStyle(fontSize: 16))),
+            Container(width: 30, height: 30,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(colors: [AppTheme.primary, AppTheme.primaryDark]),
+                shape: BoxShape.circle),
+              child: const Center(child: Text('🌿', style: TextStyle(fontSize: 14))),
             ),
             const SizedBox(width: 8),
           ],
           Flexible(
-            child: Column(
-              crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    gradient: isUser
-                        ? const LinearGradient(
-                            colors: [AppTheme.primary, Color(0xFF38B2AC)],
-                            begin: Alignment.topLeft, end: Alignment.bottomRight)
-                        : null,
-                    color: isUser ? null : (isDark ? AppTheme.bgCardDark : Colors.white),
-                    borderRadius: BorderRadius.circular(22).copyWith(
-                      bottomLeft: isUser ? null : const Radius.circular(6),
-                      bottomRight: isUser ? const Radius.circular(6) : null,
-                    ),
-                    boxShadow: [BoxShadow(
-                      color: Colors.black.withOpacity(isUser ? 0.1 : 0.04),
-                      blurRadius: 10, offset: const Offset(0, 4))],
+            child: GestureDetector(
+              onLongPress: () {
+                Clipboard.setData(ClipboardData(text: msg.text));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('Disalin!', style: GoogleFonts.poppins(fontSize: 13)),
+                  duration: const Duration(seconds: 1),
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ));
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                decoration: BoxDecoration(
+                  gradient: isUser ? const LinearGradient(
+                    colors: [AppTheme.primary, AppTheme.primaryDark],
+                    begin: Alignment.topLeft, end: Alignment.bottomRight) : null,
+                  color: isUser ? null : (isDark ? const Color(0xFF1C1C1E) : Colors.white),
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(18),
+                    topRight: const Radius.circular(18),
+                    bottomLeft: Radius.circular(isUser ? 18 : 4),
+                    bottomRight: Radius.circular(isUser ? 4 : 18),
                   ),
-                  child: Text(msg.text,
-                      style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          color: isUser ? Colors.white : AppTheme.text(context),
-                          height: 1.55)),
+                  boxShadow: [BoxShadow(
+                    color: isUser ? AppTheme.primary.withOpacity(0.2) : Colors.black.withOpacity(0.05),
+                    blurRadius: 8, offset: const Offset(0, 2))],
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  '${msg.time.hour.toString().padLeft(2,'0')}:${msg.time.minute.toString().padLeft(2,'0')}',
-                  style: GoogleFonts.poppins(fontSize: 9, color: AppTheme.textLt(context)),
-                ),
-              ],
+                child: _richText(msg.text, isUser),
+              ),
             ),
           ),
           if (isUser) const SizedBox(width: 8),
@@ -435,6 +436,111 @@ class _Bubble extends StatelessWidget {
       ),
     );
   }
+
+  Widget _richText(String text, bool isUser) {
+    final color = isUser ? Colors.white : AppTheme.text(context);
+    final boldColor = isUser ? Colors.white : AppTheme.primary;
+    final parts = text.split('**');
+    if (parts.length == 1) {
+      return Text(text, style: GoogleFonts.poppins(
+          fontSize: 14, color: color, height: 1.55));
+    }
+    return RichText(text: TextSpan(
+      children: parts.asMap().entries.map((e) => TextSpan(
+        text: e.value,
+        style: GoogleFonts.poppins(
+          fontSize: 14, height: 1.55,
+          fontWeight: e.key.isOdd ? FontWeight.w700 : FontWeight.w400,
+          color: e.key.isOdd ? boldColor : color),
+      )).toList(),
+    ));
+  }
+
+  Widget _suggestionsBar() {
+    return Container(
+      color: AppTheme.isDark(context) ? const Color(0xFF111111) : Colors.white,
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('  Balas cepat:', style: GoogleFonts.poppins(
+            fontSize: 10, color: AppTheme.textLt(context))),
+        const SizedBox(height: 5),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: _suggestions.map((s) => GestureDetector(
+            onTap: () => _send(s),
+            child: Container(
+              margin: const EdgeInsets.only(right: 8, bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppTheme.primary.withOpacity(0.35)),
+              ),
+              child: Text(s, style: GoogleFonts.poppins(
+                  fontSize: 12, color: AppTheme.primary, fontWeight: FontWeight.w500)),
+            ),
+          )).toList()),
+        ),
+      ]),
+    );
+  }
+
+  Widget _inputBar(bool isDark) => Container(
+    padding: EdgeInsets.fromLTRB(12, 8, 12,
+        MediaQuery.of(context).padding.bottom > 0 ? MediaQuery.of(context).padding.bottom : 14),
+    decoration: BoxDecoration(
+      color: isDark ? const Color(0xFF111111) : Colors.white,
+      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05),
+          blurRadius: 12, offset: const Offset(0, -4))],
+    ),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+      Expanded(
+        child: Container(
+          constraints: const BoxConstraints(maxHeight: 110),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF5F5F5),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: AppTheme.divider(context)),
+          ),
+          child: TextField(
+            controller: _ctrl, maxLines: null,
+            textCapitalization: TextCapitalization.sentences,
+            style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.text(context)),
+            decoration: InputDecoration(
+              hintText: 'Ceritakan perasaanmu...',
+              hintStyle: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textLt(context)),
+              border: InputBorder.none, enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none, filled: false,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+            ),
+            onChanged: (v) => setState(() {}),
+          ),
+        ),
+      ),
+      const SizedBox(width: 8),
+      GestureDetector(
+        onTap: _typing ? null : _send,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: 46, height: 46,
+          decoration: BoxDecoration(
+            gradient: (_ctrl.text.isNotEmpty && !_typing) ? const LinearGradient(
+                colors: [AppTheme.primary, AppTheme.primaryDark],
+                begin: Alignment.topLeft, end: Alignment.bottomRight) : null,
+            color: (_ctrl.text.isEmpty || _typing) ? AppTheme.card2(context) : null,
+            shape: BoxShape.circle,
+            boxShadow: (_ctrl.text.isNotEmpty && !_typing) ? [
+              BoxShadow(color: AppTheme.primary.withOpacity(0.4),
+                  blurRadius: 8, offset: const Offset(0, 3))
+            ] : [],
+          ),
+          child: Icon(Icons.send_rounded,
+            color: (_ctrl.text.isNotEmpty && !_typing) ? Colors.white : AppTheme.textLt(context),
+            size: 20),
+        ),
+      ),
+    ]),
+  );
 }
 
 class _TypingBubble extends StatefulWidget {
@@ -443,58 +549,50 @@ class _TypingBubble extends StatefulWidget {
   State<_TypingBubble> createState() => _TypingBubbleState();
 }
 
-class _TypingBubbleState extends State<_TypingBubble>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
+class _TypingBubbleState extends State<_TypingBubble> with SingleTickerProviderStateMixin {
+  late AnimationController _c;
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this,
-        duration: const Duration(milliseconds: 1000))..repeat();
+    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat();
   }
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() { _c.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) {
-    final isDark = AppTheme.isDark(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        Container(
-          width: 34, height: 34,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-                colors: [AppTheme.primary, AppTheme.primaryDark]),
-            shape: BoxShape.circle,
-          ),
-          child: const Center(child: Text('🌿', style: TextStyle(fontSize: 16))),
+        Container(width: 30, height: 30,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(colors: [AppTheme.primary, AppTheme.primaryDark]),
+            shape: BoxShape.circle),
+          child: const Center(child: Text('🌿', style: TextStyle(fontSize: 14))),
         ),
         const SizedBox(width: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: isDark ? AppTheme.bgCardDark : Colors.white,
+            color: AppTheme.isDark(context) ? const Color(0xFF1C1C1E) : Colors.white,
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(18), topRight: Radius.circular(18),
-              bottomRight: Radius.circular(18), bottomLeft: Radius.circular(4),
-            ),
-            boxShadow: [BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 8, offset: const Offset(0, 2))],
+              bottomRight: Radius.circular(18), bottomLeft: Radius.circular(4)),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05),
+                blurRadius: 8, offset: const Offset(0, 2))],
           ),
           child: AnimatedBuilder(
-            animation: _ctrl,
+            animation: _c,
             builder: (_, __) => Row(mainAxisSize: MainAxisSize.min,
               children: List.generate(3, (i) {
-                final t = (_ctrl.value - i * 0.15).clamp(0.0, 1.0);
-                final scale = 0.6 + 0.4 * (t < 0.5 ? t * 2 : (1 - t) * 2);
-                return Transform.scale(
-                  scale: scale,
+                final phase = (_c.value + i / 3) % 1.0;
+                final y = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+                return Transform.translate(
+                  offset: Offset(0, -6 * y),
                   child: Container(
                     margin: const EdgeInsets.symmetric(horizontal: 3),
                     width: 8, height: 8,
                     decoration: BoxDecoration(
-                      color: AppTheme.primary.withOpacity(0.4 + 0.6 * scale),
+                      color: AppTheme.primary.withOpacity(0.35 + 0.65 * y),
                       shape: BoxShape.circle),
                   ),
                 );
@@ -505,4 +603,9 @@ class _TypingBubbleState extends State<_TypingBubble>
       ]),
     );
   }
+}
+
+class _Msg {
+  final String id, text; final bool isUser; final DateTime time;
+  _Msg({required this.id, required this.text, required this.isUser, required this.time});
 }
