@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import '../../services/storage_service.dart';
+
 import '../../models/models.dart';
+import '../../services/storage_service.dart';
 import '../../utils/app_theme.dart';
 
 class JournalScreen extends StatefulWidget {
@@ -26,38 +27,50 @@ class _JournalScreenState extends State<JournalScreen> {
 
   Future<void> _loadEntries() async {
     final entries = await StorageService.getJournalEntries();
-    if (mounted) setState(() { _entries = entries; _loading = false; });
+    if (!mounted) return;
+    setState(() {
+      _entries = entries;
+      _loading = false;
+    });
   }
 
   void _openEditor({JournalEntry? entry}) {
-    Navigator.of(context).push(PageRouteBuilder(
-      transitionDuration: const Duration(milliseconds: 400),
-      pageBuilder: (context, animation, secondaryAnimation) =>
-          _JournalEditorScreen(entry: entry),
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        const begin = Offset(1.0, 0.0);
-        const end = Offset.zero;
-        final tween = Tween(begin: begin, end: end)
-            .chain(CurveTween(curve: Curves.easeOutCubic));
-        return SlideTransition(position: animation.drive(tween), child: child);
-      },
-    )).then((_) => _loadEntries());
+    Navigator.of(context)
+        .push(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 400),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            _JournalEditorScreen(entry: entry),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          final tween = Tween(begin: begin, end: end)
+              .chain(CurveTween(curve: Curves.easeOutCubic));
+          return SlideTransition(position: animation.drive(tween), child: child);
+        },
+      ),
+    )
+        .then((_) => _loadEntries());
   }
 
   Future<bool?> _confirmDeletion() async {
-    return await showDialog<bool>(
+    return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Hapus Jurnal?'),
         content: const Text('Jurnal ini akan dihapus permanen.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Batal')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Hapus',
-                  style: TextStyle(color: AppTheme.danger))),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Hapus',
+              style: TextStyle(color: AppTheme.danger),
+            ),
+          ),
         ],
       ),
     );
@@ -66,16 +79,24 @@ class _JournalScreenState extends State<JournalScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.bgLight,
+      backgroundColor: AppTheme.bg(context),
       appBar: AppBar(
-        title: Text('Jurnal Harian',
-            style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        title: Text(
+          'Jurnal Harian',
+          style: GoogleFonts.nunito(fontWeight: FontWeight.w800),
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openEditor(),
         backgroundColor: AppTheme.primary,
         icon: const Icon(Icons.add, color: Colors.white),
-        label: Text('Tulis', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+        label: Text(
+          'Tulis',
+          style: GoogleFonts.poppins(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -92,15 +113,18 @@ class _JournalScreenState extends State<JournalScreen> {
         children: [
           const Text('✍️', style: TextStyle(fontSize: 64)),
           const SizedBox(height: 16),
-          Text('Belum ada jurnal',
-              style: GoogleFonts.nunito(
-                  fontSize: 20, fontWeight: FontWeight.w700)),
+          Text(
+            'Belum ada jurnal',
+            style: GoogleFonts.nunito(fontSize: 20, fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 8),
           Text(
             'Tulis jurnal pertamamu hari ini!\nEkspresikan perasaan dan pikiranmu.',
             textAlign: TextAlign.center,
             style: GoogleFonts.poppins(
-                fontSize: 14, color: AppTheme.textMedium),
+              fontSize: 14,
+              color: AppTheme.textMed(context),
+            ),
           ),
         ],
       ),
@@ -114,125 +138,152 @@ class _JournalScreenState extends State<JournalScreen> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-            child: Text('Kisah perjalananmu,\ntersimpan dengan aman. ✨',
-                style: GoogleFonts.nunito(
-                    fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.textMedium)),
+            child: Text(
+              'Kisah perjalananmu,\ntersimpan dengan aman. ✨',
+              style: GoogleFonts.nunito(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textMed(context),
+              ),
+            ),
           ),
         ),
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           sliver: SliverList(
-            delegate: SliverChildBuilderDelegate((ctx, i) {
-        final entry = _entries[i];
-        return Dismissible(
-          key: Key(entry.id),
-          direction: DismissDirection.endToStart,
-          confirmDismiss: (direction) => _confirmDeletion(),
-          onDismissed: (_) async {
-            await StorageService.deleteJournalEntry(entry.id);
-            setState(() {
-              _entries.removeAt(i);
-            });
-          },
-          background: Container(
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 24),
-            decoration: BoxDecoration(
-              color: AppTheme.danger,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Icon(Icons.delete_outline,
-                color: Colors.white, size: 28),
-          ),
-          child: GestureDetector(
-            onTap: () => _openEditor(entry: entry),
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 8))
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(entry.mood,
-                          style: const TextStyle(fontSize: 24)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              entry.title,
-                              style: GoogleFonts.poppins(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.textDark,
-                              ),
+            delegate: SliverChildBuilderDelegate(
+              (ctx, i) {
+                final entry = _entries[i];
+                return Dismissible(
+                  key: Key(entry.id),
+                  direction: DismissDirection.endToStart,
+                  confirmDismiss: (_) => _confirmDeletion(),
+                  onDismissed: (_) async {
+                    await StorageService.deleteJournalEntry(entry.id);
+                    if (!mounted) return;
+                    setState(() {
+                      _entries.removeAt(i);
+                    });
+                  },
+                  background: Container(
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 24),
+                    decoration: BoxDecoration(
+                      color: AppTheme.danger,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                  child: InkWell(
+                    onTap: () => _openEditor(entry: entry),
+                    borderRadius: BorderRadius.circular(24),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppTheme.card(context),
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(
+                              Theme.of(context).brightness == Brightness.dark
+                                  ? 0.25
+                                  : 0.03,
                             ),
-                            Text(
-                              DateFormat('EEEE, d MMMM yyyy', 'id')
-                                  .format(entry.date),
-                              style: GoogleFonts.poppins(
-                                fontSize: 11,
-                                color: AppTheme.textLight,
+                            blurRadius: 15,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                entry.mood,
+                                style: const TextStyle(fontSize: 24),
                               ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      entry.title,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppTheme.text(context),
+                                      ),
+                                    ),
+                                    Text(
+                                      DateFormat('EEEE, d MMMM yyyy', 'id')
+                                          .format(entry.date),
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 11,
+                                        color: AppTheme.textLt(context),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                Icons.arrow_forward_ios,
+                                size: 14,
+                                color: AppTheme.textLt(context),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            entry.content,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              color: AppTheme.textMed(context),
+                              height: 1.5,
+                            ),
+                          ),
+                          if (entry.tags.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 6,
+                              children: entry.tags.map((t) {
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primary.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '#$t',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11,
+                                      color: AppTheme.primary,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
                             ),
                           ],
-                        ),
+                        ],
                       ),
-                      const Icon(Icons.arrow_forward_ios,
-                          size: 14, color: AppTheme.textLight),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    entry.content,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      color: AppTheme.textMedium,
-                      height: 1.5,
                     ),
                   ),
-                  if (entry.tags.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 6,
-                      children: entry.tags
-                          .map((t) => Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color:
-                                      AppTheme.primary.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  '#$t',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 11,
-                                    color: AppTheme.primary,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ))
-                          .toList(),
-                    ),
-                  ],
-                ],
-              ),
+                );
+              },
+              childCount: _entries.length,
             ),
-          ),
-        );
-            }, childCount: _entries.length),
           ),
         ),
       ],
@@ -240,7 +291,6 @@ class _JournalScreenState extends State<JournalScreen> {
   }
 }
 
-// ─── Journal Editor ───────────────────────────────────────────────────────────
 class _JournalEditorScreen extends StatefulWidget {
   final JournalEntry? entry;
   const _JournalEditorScreen({this.entry});
@@ -253,6 +303,7 @@ class _JournalEditorScreenState extends State<_JournalEditorScreen> {
   final _titleCtrl = TextEditingController();
   final _contentCtrl = TextEditingController();
   final _tagCtrl = TextEditingController();
+
   String _selectedMood = '😊';
   List<String> _tags = [];
   bool _saving = false;
@@ -285,34 +336,44 @@ class _JournalEditorScreenState extends State<_JournalEditorScreen> {
       );
       return;
     }
+
     setState(() => _saving = true);
+
     final entry = JournalEntry(
-      id: widget.entry?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      id: widget.entry?.id ??
+          DateTime.now().millisecondsSinceEpoch.toString(),
       title: _titleCtrl.text.trim(),
       content: _contentCtrl.text.trim(),
       date: DateTime.now(),
       mood: _selectedMood,
       tags: _tags,
     );
+
     await StorageService.saveJournalEntry(entry);
+
     if (!mounted) return;
     Navigator.pop(context);
   }
 
   void _addTag() {
     final tag = _tagCtrl.text.trim();
-    if (tag.isNotEmpty && !_tags.contains(tag)) {
-      setState(() {
-        _tags.add(tag);
-        _tagCtrl.clear();
-      });
-    }
+    if (tag.isEmpty) return;
+    if (_tags.contains(tag)) return;
+
+    setState(() {
+      _tags.add(tag);
+      _tagCtrl.clear();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final moodIdleBg = Theme.of(context).brightness == Brightness.dark
+        ? AppTheme.bgCard2Dark
+        : const Color(0xFFF0EDE8);
+
     return Scaffold(
-      backgroundColor: AppTheme.bgLight,
+      backgroundColor: AppTheme.bg(context),
       appBar: AppBar(
         title: Text(
           widget.entry == null ? 'Jurnal Baru' : 'Edit Jurnal',
@@ -337,10 +398,13 @@ class _JournalEditorScreenState extends State<_JournalEditorScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Mood selector
-            Text('Mood saat menulis:',
-                style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w600, fontSize: 14)),
+            Text(
+              'Mood saat menulis:',
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
             const SizedBox(height: 10),
             Row(
               children: _moodOptions.map((m) {
@@ -354,12 +418,10 @@ class _JournalEditorScreenState extends State<_JournalEditorScreen> {
                     decoration: BoxDecoration(
                       color: isSelected
                           ? AppTheme.primary.withOpacity(0.15)
-                          : Colors.white,
+                          : moodIdleBg,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: isSelected
-                            ? AppTheme.primary
-                            : Colors.transparent,
+                        color: isSelected ? AppTheme.primary : Colors.transparent,
                         width: 2,
                       ),
                     ),
@@ -372,7 +434,9 @@ class _JournalEditorScreenState extends State<_JournalEditorScreen> {
             Text(
               DateFormat('EEEE, d MMMM yyyy', 'id').format(DateTime.now()),
               style: GoogleFonts.poppins(
-                  fontSize: 13, color: AppTheme.textMedium),
+                fontSize: 13,
+                color: AppTheme.textMed(context),
+              ),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -387,7 +451,7 @@ class _JournalEditorScreenState extends State<_JournalEditorScreen> {
                 hintStyle: GoogleFonts.nunito(
                   fontSize: 22,
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.textLight,
+                  color: AppTheme.textLt(context),
                 ),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
@@ -410,7 +474,7 @@ class _JournalEditorScreenState extends State<_JournalEditorScreen> {
                 hintText: 'Mulai menulis tentang harimu...',
                 hintStyle: GoogleFonts.poppins(
                   fontSize: 15,
-                  color: AppTheme.textLight,
+                  color: AppTheme.textLt(context),
                 ),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
@@ -421,9 +485,13 @@ class _JournalEditorScreenState extends State<_JournalEditorScreen> {
             ),
             const Divider(),
             const SizedBox(height: 12),
-            Text('Tag:',
-                style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w600, fontSize: 14)),
+            Text(
+              'Tag:',
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -432,8 +500,8 @@ class _JournalEditorScreenState extends State<_JournalEditorScreen> {
                     controller: _tagCtrl,
                     decoration: const InputDecoration(
                       hintText: 'Tambah tag...',
-                      contentPadding: EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     ),
                     onSubmitted: (_) => _addTag(),
                   ),
@@ -450,17 +518,20 @@ class _JournalEditorScreenState extends State<_JournalEditorScreen> {
               spacing: 8,
               runSpacing: 8,
               children: _tags
-                  .map((t) => Chip(
-                        label: Text('#$t'),
-                        onDeleted: () =>
-                            setState(() => _tags.remove(t)),
-                        backgroundColor:
-                            AppTheme.primary.withOpacity(0.1),
-                        labelStyle: GoogleFonts.poppins(
-                            color: AppTheme.primary, fontSize: 12),
-                        deleteIconColor: AppTheme.primary,
-                        side: BorderSide.none,
-                      ))
+                  .map(
+                    (t) => Chip(
+                      label: Text('#$t'),
+                      onDeleted: () => setState(() => _tags.remove(t)),
+                      backgroundColor: AppTheme.primary.withOpacity(0.1),
+                      labelStyle: GoogleFonts.poppins(
+                        color: AppTheme.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      deleteIconColor: AppTheme.primary,
+                      side: BorderSide.none,
+                    ),
+                  )
                   .toList(),
             ),
           ],
@@ -469,3 +540,4 @@ class _JournalEditorScreenState extends State<_JournalEditorScreen> {
     );
   }
 }
+

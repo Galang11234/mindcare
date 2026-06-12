@@ -58,6 +58,7 @@ class PaymentService {
       ],
       isBestValue: true,
     ),
+    // B2B - Kampus (Rp 5.000.000 / tahun)
     'institution_campus': PricePlan(
       id: 'institution_campus',
       name: 'Paket Kampus',
@@ -72,6 +73,40 @@ class PaymentService {
         'Training tim konselor',
         'Dedicated account manager',
         'Integrasi SSO kampus',
+      ],
+    ),
+    // B2B - Korporat (Rp 15.000.000 / tahun)
+    'institution_corporate': PricePlan(
+      id: 'institution_corporate',
+      name: 'Paket Korporat',
+      description: 'Untuk perusahaan & organisasi',
+      price: 15000000,
+      period: '12 Bulan',
+      features: [
+        'Employee Assistance Program (EAP)',
+        'Akun unlimited karyawan',
+        'Laporan HR (anonim agregat)',
+        'Konsultasi psikolog (program)',
+        'Data anonim & PDPA compliant',
+        'Dedicated account manager',
+        'Integrasi SSO perusahaan',
+      ],
+    ),
+    // Marketplace - sesi konsultasi psikolog (booking)
+    // Catatan: harga final biasanya dihitung di UI psikolog, namun booking saat ini
+    // memakai planId 'session' sebagai trigger pembayaran.
+    'session': PricePlan(
+      id: 'session',
+      name: 'Sesi Konsultasi Psikolog',
+      description: 'Pembayaran booking sesi konsultasi psikolog',
+      // Dummy price agar createPayment berhasil. Implementasi pembayaran final saat ini
+      // menggunakan plan.price sebagai gross_amount.
+      // Jika ingin akurat, perlu mekanisme dynamic pricing dari UI.
+      price: 150000,
+      period: '1 Sesi',
+      features: [
+        'Booking sesi',
+        'Akses sesi konsultasi sesuai jadwal',
       ],
     ),
   };
@@ -249,8 +284,8 @@ class PaymentService {
         status = 'expired';
       }
 
-      // Update payment
-      final paymentData = await _sb
+      // Update payment (safe: never crash when 0 rows)
+      final paymentQuery = await _sb
           .from('payments')
           .update({
             'status': status,
@@ -258,10 +293,16 @@ class PaymentService {
             'paid_at': status == 'paid' ? DateTime.now().toIso8601String() : null,
           })
           .eq('order_id', orderId)
-          .select()
-          .single();
+          .select();
+
+      // If no rows were updated, do NOT throw; webhook may arrive early or RLS may block.
+      if (paymentQuery.isEmpty) return false;
+
+      final paymentData = paymentQuery.first as Map<String, dynamic>;
+
 
       // If paid → activate subscription
+
       if (status == 'paid') {
         await _activateSubscription(paymentData);
       }
@@ -281,12 +322,16 @@ class PaymentService {
           .from('payments')
           .select('status')
           .eq('order_id', orderId)
-          .single();
-      return data['status'] as String;
+          .maybeSingle();
+
+      if (data == null) return 'unknown';
+      final status = data['status'];
+      return status is String ? status : 'unknown';
     } catch (_) {
       return 'unknown';
     }
   }
+
 
   // ─────────────────────────────────────────────────────────────
   // ACTIVATE SUBSCRIPTION after successful payment
@@ -303,7 +348,15 @@ class PaymentService {
     if (paymentType == 'institution_license') {
       plan = 'institution';
       expiresAt = DateTime.now().add(const Duration(days: 365));
-      subPlan = 'institution';
+      // Deduce institution subtype from amount heuristics or from payment record.
+      // Saat ini payment record tidak menyimpan planId secara eksplisit, sehingga gunakan amount.
+      // Kampus: 5.000.000, Korporat: 15.000.000
+      final amount = payment['amount'] as int;
+      if (amount >= 10000000) {
+        subPlan = 'institution_corporate';
+      } else {
+        subPlan = 'institution_campus';
+      }
     } else {
       // Check amount to determine monthly vs annual
       final amount = payment['amount'] as int;

@@ -1,9 +1,9 @@
 // lib/screens/subscription/subscription_screen.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../services/payment_service.dart';
-import '../../services/auth_service.dart';
-import '../../utils/app_theme.dart';
+import '../../../services/payment_service.dart';
+import '../../../services/auth_service.dart';
+import '../../../utils/app_theme.dart';
 
 class SubscriptionScreen extends StatefulWidget {
   const SubscriptionScreen({super.key});
@@ -16,6 +16,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   bool _isPremium = false;
   bool _loading = false;
   bool _checkingStatus = true;
+
+  // B2B (untuk ditampilkan)
+  final _campusPlanPrice = 'Rp 5.000.000 / tahun';
+  final _corporatePlanPrice = 'Rp 15.000.000 / tahun';
 
   @override
   void initState() {
@@ -351,14 +355,17 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             const SizedBox(height: 12),
             Text('Paket Kampus & Korporat', style: GoogleFonts.nunito(
                 fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
+            const SizedBox(height: 10),
+
+            // Kampus
+            Text('Kampus — $_campusPlanPrice', style: GoogleFonts.poppins(
+                fontSize: 14, color: AppTheme.gold, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
-            Text('Mulai dari Rp 5.000.000 / tahun', style: GoogleFonts.poppins(
-                fontSize: 14, color: AppTheme.gold, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 12),
-            ...['Dashboard admin & laporan kolektif anonim',
-              'Akun unlimited untuk seluruh mahasiswa/karyawan',
-              'Laporan kesehatan mental agregat tiap bulan',
-              'Integrasi SSO kampus/perusahaan',
+            ...[
+              'Akun unlimited mahasiswa',
+              'Dashboard admin & laporan kolektif anonim',
+              'Integrasi SSO kampus',
+              'Training tim konselor',
               'Dedicated account manager',
             ].map((f) => Padding(
               padding: const EdgeInsets.only(bottom: 6),
@@ -369,6 +376,30 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     fontSize: 12, color: Colors.white70))),
               ]),
             )),
+
+            const SizedBox(height: 14),
+
+            // Korporat
+            Text('Korporat — $_corporatePlanPrice', style: GoogleFonts.poppins(
+                fontSize: 14, color: AppTheme.gold, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            ...[
+              'Employee Assistance Program (EAP)',
+              'Akun unlimited karyawan',
+              'Laporan HR (anonim agregat)',
+              'Konsultasi psikolog (program)',
+              'Integrasi SSO perusahaan',
+              'Dedicated account manager',
+            ].map((f) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(children: [
+                Icon(Icons.check_circle, color: AppTheme.teal, size: 16),
+                const SizedBox(width: 8),
+                Expanded(child: Text(f, style: GoogleFonts.poppins(
+                    fontSize: 12, color: Colors.white70))),
+              ]),
+            )),
+
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,

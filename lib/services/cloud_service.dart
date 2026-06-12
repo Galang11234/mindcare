@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/auth_service.dart';
 
+
 // Semua data user tersimpan di Supabase (cloud sync multi-device)
 class CloudService {
   static final _sb = Supabase.instance.client;
@@ -198,15 +199,25 @@ class CloudService {
   }
 
   static Future<int> getUnreadNotifCount() async {
+    // Hindari fitur count/FetchOptions yang berbeda-beda antar versi supabase_flutter.
+    // Cara paling aman: ambil data unread yang terbatas lalu hitung jumlahnya.
     final uid = AuthService.userId;
     if (uid == null) return 0;
+
     try {
       final data = await _sb
-          .from('notifications').select('id', const FetchOptions(count: CountOption.exact))
-          .eq('user_id', uid).eq('is_read', false);
-      return data.count ?? 0;
-    } catch (_) { return 0; }
+          .from('notifications')
+          .select('id')
+          .eq('user_id', uid)
+          .eq('is_read', false)
+          .limit(1000);
+
+      return (data as List).length;
+    } catch (_) {
+      return 0;
+    }
   }
+
 
   // ── STATS (for dashboard) ────────────────────────────────────
   static Future<Map<String, dynamic>> getDashboardStats() async {
