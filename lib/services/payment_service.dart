@@ -19,6 +19,16 @@ import 'auth_service.dart';
 // flutter run --dart-define=PAYMENT_DEMO_MODE=false
 const bool _paymentDemoModeDefault = true;
 
+// Force demo mode for stability in development/demo.
+// You can disable for production by rebuilding with:
+//   flutter run --dart-define=PAYMENT_DEMO_MODE=false
+const bool paymentDemoMode =
+    bool.fromEnvironment('PAYMENT_DEMO_MODE', defaultValue: _paymentDemoModeDefault);
+
+
+
+
+
 
 class PaymentService {
   static final _sb = Supabase.instance.client;
