@@ -73,11 +73,20 @@ class CloudService {
         return id;
       } else {
         // Insert
-        final res = await _sb.from('journal_entries').insert({
-          'user_id': uid, 'title': title, 'content': content,
-          'mood': mood, 'tags': tags,
-          'recorded_at': (date ?? DateTime.now()).toIso8601String(),
-        }).select('id').single();
+        final res = await _sb
+            .from('journal_entries')
+            .insert({
+              'user_id': uid,
+              'title': title,
+              'content': content,
+              'mood': mood,
+              'tags': tags,
+              'recorded_at': (date ?? DateTime.now()).toIso8601String(),
+            })
+            .select('id')
+            .maybeSingle();
+
+        if (res == null) return null;
         return res['id'] as String;
       }
     } catch (_) { return null; }

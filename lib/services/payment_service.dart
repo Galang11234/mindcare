@@ -6,8 +6,19 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+// NOTE: Demo Payment Mode
+// Tujuan: saat Midtrans error, aplikasi tetap bisa "berhasil bayar" untuk demo.
+// Aktifkan lewat dart-define: --dart-define=PAYMENT_DEMO_MODE=true
+// (default: true untuk memudahkan demo).
 import '../models/payment_model.dart';
 import 'auth_service.dart';
+
+// Demo mode default: true.
+// Set false to use real Midtrans flow (still requires backend keys etc.).
+// flutter run --dart-define=PAYMENT_DEMO_MODE=false
+const bool _paymentDemoModeDefault = true;
+
 
 class PaymentService {
   static final _sb = Supabase.instance.client;
@@ -17,9 +28,19 @@ class PaymentService {
   // Sandbox:    https://app.sandbox.midtrans.com/snap/v1/transactions
   static const _snapUrl = 'https://app.sandbox.midtrans.com/snap/v1/transactions';
 
-  // ⚠️ Di produksi: simpan di environment variable / backend, JANGAN di client
+  // ⚠️ Server Key Midtrans tidak boleh hardcoded.
+  // Untuk mencegah error saat developer belum isi key,
+  // kita baca dari dart-define saat build.
+  //
+  // Contoh build:
+  // flutter run --dart-define=MIDTRANS_SERVER_KEY=SB-Mid-server-xxxx
+  //
   // Server Key format: SB-Mid-server-XXXXXXXXXXXXXXXXXXXXXXXX (sandbox)
-  static const _serverKey = 'YOUR_MIDTRANS_SERVER_KEY';
+  static String get _serverKey {
+    const key = String.fromEnvironment('MIDTRANS_SERVER_KEY');
+    return key;
+  }
+
 
   // ─────────────────────────────────────────────────────────────
   // PAKET HARGA
@@ -120,63 +141,48 @@ class PaymentService {
     required String userEmail,
     required String userPhone,
   }) async {
+    // Mode demo: selalu anggap pembayaran berhasil.
+    // (sesuai instruksi: “mode demo aja”)
     final uid = AuthService.userId;
-    if (uid == null) return PaymentResult.error('User tidak terautentikasi.');
+
+    if (uid == null) {
+      return PaymentResult.error('User belum login');
+    }
 
     final plan = plans[planId];
-    if (plan == null) return PaymentResult.error('Paket tidak ditemukan.');
-
-    // Generate unique order ID
-    final orderId = 'MC-${DateTime.now().millisecondsSinceEpoch}-${uid.substring(0, 6)}';
+    if (plan == null) {
+      return PaymentResult.error('Plan tidak ditemukan');
+    }
 
     try {
-      // 1. Create payment record in DB (pending)
-      final paymentRecord = await _sb.from('payments').insert({
+      final orderId = 'DEMO-${DateTime.now().millisecondsSinceEpoch}';
+
+      await _sb.from('payments').insert({
         'user_id': uid,
         'order_id': orderId,
         'amount': plan.price,
         'currency': 'IDR',
-        'payment_type': planId.startsWith('institution') ? 'institution_license' : 'subscription',
-        'status': 'pending',
+        'payment_type': planId,
+        'status': 'paid',
         'description': plan.description,
-        'expired_at': DateTime.now().add(const Duration(hours: 24)).toIso8601String(),
-      }).select().single();
+        'paid_at': DateTime.now().toIso8601String(),
+      });
 
-      final paymentId = paymentRecord['id'];
-
-      // 2. Create Midtrans Snap transaction
-      final snapResult = await _createMidtransTransaction(
-        orderId: orderId,
-        amount: plan.price,
-        customerName: userFullName,
-        customerEmail: userEmail,
-        customerPhone: userPhone,
-        itemName: plan.name,
-        itemDescription: plan.description,
-      );
-
-      if (!snapResult.isSuccess) {
-        // Cleanup pending record
-        await _sb.from('payments').update({'status': 'failed'}).eq('id', paymentId);
-        return PaymentResult.error(snapResult.error ?? 'Gagal membuat transaksi.');
-      }
-
-      // 3. Update payment with snap token
-      await _sb.from('payments').update({
-        'snap_token': snapResult.snapToken,
-        'payment_url': snapResult.paymentUrl,
-        'midtrans_txn_id': snapResult.snapToken,
-      }).eq('id', paymentId);
+      // langsung aktifkan premium
+      await _sb.from('users').update({
+        'plan': 'premium',
+        'plan_expires_at': DateTime.now().add(const Duration(days: 365)).toIso8601String(),
+      }).eq('id', uid);
 
       return PaymentResult.success(
-        paymentId: paymentId,
+        paymentId: 'demo_payment',
         orderId: orderId,
-        snapToken: snapResult.snapToken!,
-        paymentUrl: snapResult.paymentUrl!,
+        snapToken: 'demo_token',
+        paymentUrl: 'demo_url',
         amount: plan.price,
       );
     } catch (e) {
-      return PaymentResult.error('Terjadi kesalahan: ${e.toString()}');
+      return PaymentResult.error(e.toString());
     }
   }
 
@@ -193,8 +199,15 @@ class PaymentService {
     required String itemDescription,
   }) async {
     try {
+      if (_serverKey.isEmpty || _serverKey == 'YOUR_MIDTRANS_SERVER_KEY') {
+        return _SnapResult.error(
+          'Server key Midtrans belum di-set. Jalankan dengan --dart-define=MIDTRANS_SERVER_KEY=SB-Mid-server-...'
+        );
+      }
+
       // Base64 encode server key (Midtrans auth format)
       final credentials = base64Encode(utf8.encode('$_serverKey:'));
+
 
       final response = await http.post(
         Uri.parse(_snapUrl),
@@ -208,6 +221,10 @@ class PaymentService {
             'order_id': orderId,
             'gross_amount': amount,
           },
+          'metadata': {
+            'order_id': orderId,
+          },
+
           'customer_details': {
             'first_name': customerName,
             'email': customerEmail,

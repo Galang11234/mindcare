@@ -31,3 +31,15 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  fonts:
+    - family: NotoSans
+      fonts:
+        - asset: assets/fonts/NotoSans-Regular.ttf
+
+# Fallback font to reduce missing glyph warnings
+    - family: NotoSansFallback
+      fonts:
+        - asset: assets/fonts/NotoSans-Regular.ttf
+
+

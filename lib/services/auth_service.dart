@@ -193,9 +193,16 @@ class AuthService {
           .from('users')
           .select()
           .eq('id', userId!)
-          .single();
+          .maybeSingle();
+
+      if (data == null) {
+        // If the user row doesn't exist yet, avoid crashing with PGRST116.
+        return null;
+      }
 
       return UserModel.fromJson(data);
+
+
     } catch (e) {
       print("GET USER ERROR = $e");
       return null;

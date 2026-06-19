@@ -1,4 +1,6 @@
 // lib/screens/subscription/subscription_screen.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../services/payment_service.dart';
@@ -38,32 +40,65 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     setState(() => _loading = true);
 
-    final result = await PaymentService.createPayment(
-      planId: _selectedPlan,
-      userFullName: user.fullName,
-      userEmail: user.email,
-      userPhone: user.phone ?? '08100000000',
-    );
+    // Paksa UI stop setelah 15 detik walaupun request await menggantung.
+    bool timedOut = false;
+    Timer(const Duration(seconds: 15), () {
+      if (!mounted) return;
+      timedOut = true;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Timeout booking: coba lagi beberapa saat lagi.'),
+          backgroundColor: AppTheme.danger,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    });
+
+    PaymentResult result;
+    try {
+      result = await PaymentService.createPayment(
+        planId: _selectedPlan,
+        userFullName: user.fullName,
+        userEmail: user.email,
+        userPhone: user.phone ?? '08100000000',
+      );
+    } catch (e) {
+      result = PaymentResult.error(e.toString());
+    }
+
+    if (!mounted || timedOut) return;
 
     setState(() => _loading = false);
 
-    if (!mounted) return;
-
     if (result.isSuccess) {
-      // Open Midtrans payment page
-      await PaymentService.openPaymentPage(result.paymentUrl!);
-      // Show waiting dialog
-      _showWaitingDialog(result.orderId!);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pembayaran berhasil (Demo Mode)'),
+        ),
+      );
+
+      await _checkStatus();
+
+      if (mounted) {
+        setState(() {
+          _isPremium = true;
+        });
+      }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(result.error ?? 'Gagal memproses pembayaran'),
-        backgroundColor: AppTheme.danger,
-        behavior: SnackBarBehavior.floating,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.error ?? 'Gagal memproses pembayaran'),
+          backgroundColor: AppTheme.danger,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
   void _showWaitingDialog(String orderId) {
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -74,8 +109,22 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   @override
   Widget build(BuildContext context) {
     if (_checkingStatus) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      // UI sementara saat mengecek status premium.
+      // Jika spinner terlalu lama, tombol tidak akan muncul sehingga terasa “tidak bisa ditekan”.
+      return Scaffold(
+        backgroundColor: AppTheme.bg(context),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              CircularProgressIndicator(),
+              SizedBox(height: 12),
+            ],
+          ),
+        ),
+      );
     }
+
 
     return Scaffold(
       backgroundColor: AppTheme.bg(context),
