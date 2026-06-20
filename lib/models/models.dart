@@ -180,6 +180,7 @@ class Article {
   final String category;
   final String emoji;
   final int readMinutes;
+  final bool isPremium;
 
   Article({
     required this.id,
@@ -189,8 +190,10 @@ class Article {
     required this.category,
     required this.emoji,
     required this.readMinutes,
+    this.isPremium = false,
   });
 }
+
 
 // ─── Chat Message ─────────────────────────────────────────────────────────────
 class ChatMessage {

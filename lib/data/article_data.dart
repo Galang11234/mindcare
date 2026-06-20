@@ -5,6 +5,7 @@ class ArticleData {
     Article(
       id: '1',
       title: 'Mengenal Tanda-Tanda Stres dan Cara Mengatasinya',
+
       summary: 'Stres adalah respons normal tubuh terhadap tekanan. Pelajari cara mengenali dan mengelolanya dengan efektif.',
       content: '''Stres adalah respons alami tubuh terhadap situasi yang menekan atau mengancam. Dalam jumlah yang tepat, stres bahkan bisa membantu kita menjadi lebih fokus dan produktif. Namun, stres yang berlebihan atau berkepanjangan dapat berdampak buruk pada kesehatan fisik dan mental.
 
@@ -32,10 +33,12 @@ Ingat, meminta bantuan adalah tanda kekuatan, bukan kelemahan!''',
       category: 'Stres',
       emoji: '😤',
       readMinutes: 4,
+      isPremium: false,
     ),
     Article(
       id: '2',
       title: 'Pentingnya Self-Care untuk Kesehatan Mental',
+
       summary: 'Self-care bukan kemewahan, melainkan kebutuhan dasar. Pelajari praktik perawatan diri yang bisa kamu lakukan sehari-hari.',
       content: '''Self-care atau perawatan diri adalah segala tindakan yang kita lakukan secara sadar untuk menjaga kesehatan fisik, mental, dan emosional kita. Banyak orang menganggap self-care sebagai kemewahan, padahal ini adalah kebutuhan dasar yang penting.
 
@@ -76,6 +79,7 @@ Mulailah dengan satu langkah kecil hari ini!''',
       category: 'Self-Care',
       emoji: '💆',
       readMinutes: 5,
+      isPremium: false,
     ),
     Article(
       id: '3',
@@ -121,6 +125,7 @@ Jika kecemasan terasa membebani, jangan ragu mencari bantuan profesional.''',
       category: 'Kecemasan',
       emoji: '😰',
       readMinutes: 6,
+      isPremium: true,
     ),
     Article(
       id: '4',
@@ -159,6 +164,7 @@ Mulailah dengan 5 menit sehari dan tingkatkan secara bertahap.''',
       category: 'Mindfulness',
       emoji: '🧘',
       readMinutes: 5,
+      isPremium: true,
     ),
     Article(
       id: '5',
@@ -193,6 +199,7 @@ Resiliensi bukan berarti tidak merasakan sakit. Ini berarti belajar bangkit mesk
       category: 'Resiliensi',
       emoji: '💪',
       readMinutes: 5,
+      isPremium: true,
     ),
     Article(
       id: '6',
@@ -238,6 +245,7 @@ Jika gangguan tidur berlanjut lebih dari beberapa minggu, konsultasikan dengan d
       category: 'Tidur',
       emoji: '😴',
       readMinutes: 5,
+      isPremium: true,
     ),
   ];
 

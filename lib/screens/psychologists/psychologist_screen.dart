@@ -1,4 +1,4 @@
-// lib/screens/psychologist/psychologist_screen.dart
+// lib/screens/psychologists/psychologist_screen.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -302,23 +302,29 @@ class _BookingSheetState extends State<_BookingSheet> {
     }
 
     setState(() => _loading = true);
-    final price = widget.psych['session_price'] as int;
+
+    // Ambil profil user, tapi TIDAK memblokir jika hasilnya null (kebal error)
     final user = await AuthService.getUserProfile();
-    if (user == null) return;
 
     final result = await PaymentService.createPayment(
       planId: 'session',
-      userFullName: user.fullName,
-      userEmail: user.email,
-      userPhone: user.phone ?? '08100000000',
+      userFullName: user?.fullName ?? 'Sobat MindCare',
+      userEmail: user?.email ?? 'demo@mindcare.app',
+      userPhone: user?.phone ?? '08000000000',
     );
 
-    setState(() => _loading = false);
     if (!mounted) return;
+    setState(() => _loading = false);
 
     if (result.isSuccess) {
       Navigator.pop(context);
-      await PaymentService.openPaymentPage(result.paymentUrl!);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Pembayaran berhasil! Jadwal sesi telah di-booking ✅'), 
+          backgroundColor: AppTheme.success,
+          behavior: SnackBarBehavior.floating,
+        )
+      );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(result.error ?? 'Gagal booking'), backgroundColor: AppTheme.danger));
@@ -329,8 +335,6 @@ class _BookingSheetState extends State<_BookingSheet> {
   Widget build(BuildContext context) {
     final name = widget.psych['full_name'] as String? ?? '';
     final price = widget.psych['session_price'] as int? ?? 0;
-    final platform = price * 20 ~/ 100;
-    final psychFee = price - platform;
     final formattedPrice = 'Rp ${price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')}';
 
     return Container(
@@ -448,12 +452,9 @@ class _BookingSheetState extends State<_BookingSheet> {
             onPressed: _loading ? null : _book,
             child: _loading
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Text('Bayar & Booking Sekarang'),
+                : const Text('Bayar & Booking Sekarang (Demo)'),
           ),
         ),
-        const SizedBox(height: 8),
-        Center(child: Text('Pembayaran aman via Midtrans',
-            style: GoogleFonts.poppins(fontSize: 11, color: AppTheme.textLt(context)))),
       ])),
     );
   }

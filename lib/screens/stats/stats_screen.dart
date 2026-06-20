@@ -4,8 +4,9 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import '../../models/models.dart';
-import '../../services/storage_service.dart';
+import '../../services/cloud_service.dart';
 import '../../utils/app_theme.dart';
+
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -32,10 +33,46 @@ class _StatsScreenState extends State<StatsScreen>
   void dispose() { _tab.dispose(); super.dispose(); }
 
   Future<void> _load() async {
-    final m = await StorageService.getMoodEntries();
-    final d = await StorageService.getDassResults();
-    if (mounted) setState(() { _moods = m; _dass = d; _loading = false; });
+    if (mounted) setState(() => _loading = true);
+
+    final moods = await CloudService.getMoods(limit: 90);
+    final dass = await CloudService.getDassResults(limit: 50);
+
+    // Map Supabase rows -> model
+    final m = moods.map((row) {
+      final id = (row['id'] ?? DateTime.now().millisecondsSinceEpoch.toString()) as String;
+      return MoodEntry(
+        id: id,
+        moodLevel: (row['mood_level'] as int?) ?? 0,
+        moodLabel: (row['mood_label'] as String?) ?? '',
+        emoji: (row['emoji'] as String?) ?? '😊',
+        date: DateTime.tryParse(row['recorded_at'] ?? '') ?? DateTime.now(),
+        note: row['note'] as String?,
+        emotions: List<String>.from(row['emotions'] ?? []),
+      );
+    }).toList();
+
+    final d = dass.map((row) {
+      return Dass21Result(
+        id: (row['id'] ?? DateTime.now().millisecondsSinceEpoch.toString()) as String,
+        date: DateTime.tryParse(row['recorded_at'] ?? '') ?? DateTime.now(),
+        depressionScore: (row['depression_score'] as int?) ?? 0,
+        anxietyScore: (row['anxiety_score'] as int?) ?? 0,
+        stressScore: (row['stress_score'] as int?) ?? 0,
+        answers: List<int>.from(row['answers'] ?? []),
+      );
+    }).toList();
+
+
+    if (mounted) {
+      setState(() {
+        _moods = m;
+        _dass = d;
+        _loading = false;
+      });
+    }
   }
+
 
   // helper: last 7 unique days
   List<_DayMood> _last7() {

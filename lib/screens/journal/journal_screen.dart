@@ -4,7 +4,9 @@ import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import '../../models/models.dart';
-import '../../services/storage_service.dart';
+// import '../../services/storage_service.dart';
+import '../../services/cloud_service.dart';
+
 import '../../utils/app_theme.dart';
 
 class JournalScreen extends StatefulWidget {
@@ -26,13 +28,26 @@ class _JournalScreenState extends State<JournalScreen> {
   }
 
   Future<void> _loadEntries() async {
-    final entries = await StorageService.getJournalEntries();
+    // Ambil dari Supabase supaya statistik beranda ikut update.
+    final entries = await CloudService.getJournals(limit: 100);
+    final mapped = entries.map((m) {
+      return JournalEntry(
+        id: (m['id'] ?? DateTime.now().millisecondsSinceEpoch.toString()) as String,
+        title: (m['title'] ?? '') as String,
+        content: (m['content'] ?? '') as String,
+        date: DateTime.tryParse(m['recorded_at'] ?? '') ?? DateTime.now(),
+        mood: (m['mood'] ?? '') as String,
+        tags: List<String>.from(m['tags'] ?? []),
+      );
+    }).toList();
+
     if (!mounted) return;
     setState(() {
-      _entries = entries;
+      _entries = mapped;
       _loading = false;
     });
   }
+
 
   void _openEditor({JournalEntry? entry}) {
     Navigator.of(context)
@@ -52,6 +67,7 @@ class _JournalScreenState extends State<JournalScreen> {
     )
         .then((_) => _loadEntries());
   }
+
 
   Future<bool?> _confirmDeletion() async {
     return showDialog<bool>(
@@ -157,14 +173,16 @@ class _JournalScreenState extends State<JournalScreen> {
                 return Dismissible(
                   key: Key(entry.id),
                   direction: DismissDirection.endToStart,
-                  confirmDismiss: (_) => _confirmDeletion(),
+                    confirmDismiss: (_) => _confirmDeletion(),
                   onDismissed: (_) async {
-                    await StorageService.deleteJournalEntry(entry.id);
+                    await CloudService.deleteJournal(entry.id);
+
                     if (!mounted) return;
                     setState(() {
                       _entries.removeAt(i);
                     });
                   },
+
                   background: Container(
                     alignment: Alignment.centerRight,
                     padding: const EdgeInsets.only(right: 24),
@@ -300,6 +318,7 @@ class _JournalEditorScreen extends StatefulWidget {
 }
 
 class _JournalEditorScreenState extends State<_JournalEditorScreen> {
+
   final _titleCtrl = TextEditingController();
   final _contentCtrl = TextEditingController();
   final _tagCtrl = TextEditingController();
@@ -349,9 +368,24 @@ class _JournalEditorScreenState extends State<_JournalEditorScreen> {
       tags: _tags,
     );
 
-    await StorageService.saveJournalEntry(entry);
+    final savedId = await CloudService.saveJournal(
+      id: widget.entry?.id,
+      title: entry.title,
+      content: entry.content,
+      mood: entry.mood,
+      tags: entry.tags,
+      date: entry.date,
+    );
 
     if (!mounted) return;
+    if (savedId == null) {
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gagal menyimpan jurnal. Silakan coba lagi.')),
+      );
+      return;
+    }
+
     Navigator.pop(context);
   }
 

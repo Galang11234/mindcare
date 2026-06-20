@@ -73,7 +73,7 @@ class _MainScreenState extends State<MainScreen> {
                 _NavItemProfile(
                     index: 4, current: _idx,
                     avatarEmoji: user.avatarEmoji,
-                    isPremium: user.isPremium,
+                    isPremium: false,
                     onTap: (i) => setState(() => _idx = i)),
               ],
             ),

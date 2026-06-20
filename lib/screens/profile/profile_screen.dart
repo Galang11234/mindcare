@@ -176,15 +176,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                   ),
-                  if (user.isPremium)
-                    Container(
-                      padding: const EdgeInsets.all(5),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF59E0B),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Text('✨', style: TextStyle(fontSize: 14)),
-                    ),
+
                 ],
               ),
               const SizedBox(height: 12),
@@ -204,13 +196,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: 8),
+              // (upgrade/premium UI dihapus saat premium aktif sesuai permintaan)
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                 decoration: BoxDecoration(
-                  color: user.isPremium
-                      ? const Color(0xFFF59E0B).withOpacity(0.3)
-                      : Colors.white.withOpacity(0.2),
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
@@ -222,9 +212,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      user.isPremium
-                          ? 'Anggota Premium'
-                          : 'Pengguna Gratis',
+                      user.isPremium ? 'Premium' : 'Gratis',
                       style: GoogleFonts.poppins(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -242,69 +230,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildPlanCard(UserProvider user) {
-    if (user.isPremium) {
-      final expires = user.user?.planExpiresAt;
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF6C5CE7), Color(0xFFA855F7)],
-            ),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(
-            children: [
-              const Text('👑', style: TextStyle(fontSize: 36)),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'MindCare Premium Aktif',
-                      style: GoogleFonts.nunito(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                    if (expires != null)
-                      Text(
-                        'Berlaku hingga ${DateFormat('d MMMM yyyy', 'id').format(expires)}',
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          color: Colors.white70,
-                        ),
-                      ),
-                    Text(
-                      'Nikmati semua fitur tanpa batas 💙',
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        color: Colors.white70,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const SubscriptionScreen(),
-                  ),
-                ).then((_) => context
-                    .read<UserProvider>()
-                    .refreshPremiumStatus()),
-                style: TextButton.styleFrom(foregroundColor: Colors.white),
-                child: const Text('Kelola'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
+    // Saat premium aktif, hapus seluruh tampilan upgrade premium di profil.
+    if (user.isPremium) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
@@ -358,8 +285,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: const Color(0xFF6C5CE7),
                   borderRadius: BorderRadius.circular(12),
@@ -385,12 +311,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Row(
         children: [
-          _mini('Paket', user.user?.planLabel ?? 'Gratis', '💎', AppTheme.purple),
+          _mini('Paket', user.plan, '💎', AppTheme.purple),
           const SizedBox(width: 10),
           _mini(
             'Bergabung',
-            DateFormat('MMM yyyy', 'id')
-                .format(user.user?.createdAt ?? DateTime.now()),
+            DateFormat('MMM yyyy', 'id').format(user.user?.createdAt ?? DateTime.now()),
             '📅',
             AppTheme.teal,
           ),
@@ -460,9 +385,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
               borderRadius: BorderRadius.circular(18),
             ),
             child: Column(
-              children: _payments.take(5).toList().asMap().entries.map((e) {
+              children: _payments
+                  .take(5)
+                  .toList()
+                  .asMap()
+                  .entries
+                  .map((e) {
                 final p = e.value;
-                final isLast = e.key == (_payments.length > 5 ? 4 : _payments.length - 1);
+                final isLast =
+                    e.key == (_payments.length > 5 ? 4 : _payments.length - 1);
 
                 final statusColor = p.status == 'paid'
                     ? AppTheme.success
@@ -492,8 +423,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       title: Text(
                         'Rp ${p.amount}',
-
-
                         style: GoogleFonts.poppins(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
@@ -521,7 +450,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          (p.status == 'paid' ? 'Paid' : p.status == 'pending' ? 'Pending' : p.status) ,
+                          (p.status == 'paid'
+                                  ? 'Paid'
+                                  : p.status == 'pending'
+                                      ? 'Pending'
+                                      : p.status)
+                              .toString(),
                           style: GoogleFonts.poppins(
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
@@ -580,7 +514,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => const NotificationSettingsScreen()),
+                  builder: (_) => const NotificationSettingsScreen(),
+                ),
               ),
             ),
           ]),
@@ -642,8 +577,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 context: context,
                 applicationName: 'MindCare',
                 applicationVersion: '2.0.0',
-                applicationLegalese:
-                    '© 2025 MindCare · Kelompok 9 · ST Bhinneka',
+                applicationLegalese: '© 2025 MindCare · Kelompok 9 · ST Bhinneka',
               );
             }),
           ]),
@@ -710,8 +644,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           color: AppTheme.text(context),
         ),
       ),
-      trailing:
-          Icon(Icons.arrow_forward_ios, size: 13, color: AppTheme.textLt(context)),
+      trailing: Icon(
+        Icons.arrow_forward_ios,
+        size: 13,
+        color: AppTheme.textLt(context),
+      ),
       onTap: onTap,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
     );
@@ -752,8 +689,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           decoration: BoxDecoration(
             color: AppTheme.card(context),
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(28)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -792,8 +728,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       (a) => GestureDetector(
                         onTap: () => setS(() => selected = a),
                         child: AnimatedContainer(
-                          duration:
-                              const Duration(milliseconds: 150),
+                          duration: const Duration(milliseconds: 150),
                           width: 46,
                           height: 46,
                           decoration: BoxDecoration(
@@ -802,9 +737,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ? AppTheme.primary.withOpacity(0.15)
                                 : AppTheme.card2(context),
                             border: Border.all(
-                              color: selected == a
-                                  ? AppTheme.primary
-                                  : Colors.transparent,
+                              color: selected == a ? AppTheme.primary : Colors.transparent,
                               width: 2.5,
                             ),
                           ),

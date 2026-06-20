@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import '../../../data/article_data.dart';
 import '../../../models/models.dart';
+import '../../../providers/user_provider.dart';
 import '../../../utils/app_theme.dart';
 import 'article_detail_screen.dart';
+
 
 class ArticlesScreen extends StatefulWidget {
   const ArticlesScreen({super.key});
@@ -16,20 +19,26 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
   String _selectedCategory = 'Semua';
   final _searchCtrl = TextEditingController();
 
-  List<Article> get _filtered {
+  List<Article> _filteredFor(UserProvider user) {
     var list = ArticleData.articles;
+
+    // Free user only sees non-premium articles.
+    if (!user.isPremium) {
+      list = list.where((a) => !a.isPremium).toList();
+    }
+
     if (_selectedCategory != 'Semua') {
       list = list.where((a) => a.category == _selectedCategory).toList();
     }
     if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
       list = list
-          .where((a) =>
-              a.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-              a.summary.toLowerCase().contains(_searchQuery.toLowerCase()))
+          .where((a) => a.title.toLowerCase().contains(q) || a.summary.toLowerCase().contains(q))
           .toList();
     }
     return list;
   }
+
 
   @override
   void dispose() {
@@ -39,7 +48,9 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = context.watch<UserProvider>();
     final categories = ['Semua', ...ArticleData.categories];
+    final filtered = _filteredFor(user);
     return Scaffold(
       backgroundColor: AppTheme.bgLight,
       appBar: AppBar(
@@ -47,6 +58,7 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
       ),
       body: Column(
         children: [
+
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: TextField(
@@ -96,7 +108,7 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
           ),
           const SizedBox(height: 8),
           Expanded(
-            child: _filtered.isEmpty
+            child: filtered.isEmpty
                 ? Center(
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
                       const Text('🔍', style: TextStyle(fontSize: 48)),
@@ -107,16 +119,24 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
-                    itemCount: _filtered.length,
+                    itemCount: filtered.length,
                     itemBuilder: (ctx, i) {
-                      final article = _filtered[i];
+                      final article = filtered[i];
+
                       return GestureDetector(
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => ArticleDetailScreen(article: article)),
-                        ),
+                        onTap: () {
+                          if (!user.isPremium && article.isPremium) {
+                            user.requirePremium(context, feature: 'Artikel premium eksklusif');
+                            return;
+                          }
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => ArticleDetailScreen(article: article)),
+                          );
+                        },
                         child: Container(
+
                           margin: const EdgeInsets.only(bottom: 12),
                           decoration: BoxDecoration(
                               color: Colors.white, borderRadius: BorderRadius.circular(20)),

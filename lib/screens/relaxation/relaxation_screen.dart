@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+
 import '../../data/relaxation_data.dart';
+import '../../providers/user_provider.dart';
 import '../../utils/app_theme.dart';
 
 class RelaxationScreen extends StatefulWidget {
@@ -15,20 +18,32 @@ class _RelaxationScreenState extends State<RelaxationScreen> {
   String _selectedCategory = 'Semua';
   final _categories = ['Semua', 'Pernapasan', 'Meditasi', 'Relaksasi', 'Gerakan'];
 
-  List<Map<String, dynamic>> get _filteredExercises {
-    if (_selectedCategory == 'Semua') return RelaxationData.exercises;
-    return RelaxationData.exercises
-        .where((e) => e['category'] == _selectedCategory)
-        .toList();
+  List<Map<String, dynamic>> _filteredExercises(bool isPremium) {
+    final base = _selectedCategory == 'Semua'
+        ? RelaxationData.exercises
+        : RelaxationData.exercises
+            .where((e) => e['category'] == _selectedCategory)
+            .toList();
+
+    // Free user: only 2 latihan by default.
+    if (!isPremium) {
+      return base.take(2).toList();
+    }
+    return base;
   }
 
   @override
   Widget build(BuildContext context) {
+    final user = context.watch<UserProvider>();
+    final filtered = _filteredExercises(user.isPremium);
+
     return Scaffold(
       backgroundColor: AppTheme.bgLight,
       appBar: AppBar(
-        title: Text('Relaksasi & Meditasi',
-            style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        title: Text(
+          'Relaksasi & Meditasi',
+          style: GoogleFonts.nunito(fontWeight: FontWeight.w800),
+        ),
       ),
       body: Column(
         children: [
@@ -47,15 +62,12 @@ class _RelaxationScreenState extends State<RelaxationScreen> {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     margin: const EdgeInsets.only(right: 10),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                     decoration: BoxDecoration(
                       color: isSelected ? AppTheme.primary : Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: isSelected
-                            ? AppTheme.primary
-                            : Colors.grey.shade200,
+                        color: isSelected ? AppTheme.primary : Colors.grey.shade200,
                       ),
                     ),
                     child: Text(
@@ -74,17 +86,26 @@ class _RelaxationScreenState extends State<RelaxationScreen> {
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: _filteredExercises.length,
+              itemCount: filtered.length,
               itemBuilder: (ctx, i) {
-                final ex = _filteredExercises[i];
+                final ex = filtered[i];
                 final color = Color(ex['color'] as int);
+
                 return GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => _ExerciseDetailScreen(exercise: ex),
-                    ),
-                  ),
+                  onTap: () {
+                    // Safety: if somehow tapped a locked exercise (shouldn't happen
+                    // because we filter list), show upgrade dialog.
+                    if (!user.isPremium && i >= 2) {
+                      user.requirePremium(context, feature: 'Semua latihan relaksasi');
+                      return;
+                    }
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => _ExerciseDetailScreen(exercise: ex),
+                      ),
+                    );
+                  },
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
@@ -104,8 +125,10 @@ class _RelaxationScreenState extends State<RelaxationScreen> {
                             ),
                           ),
                           child: Center(
-                            child: Text(ex['emoji'] as String,
-                                style: const TextStyle(fontSize: 40)),
+                            child: Text(
+                              ex['emoji'] as String,
+                              style: const TextStyle(fontSize: 40),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -150,8 +173,7 @@ class _RelaxationScreenState extends State<RelaxationScreen> {
                                 const SizedBox(height: 6),
                                 Row(
                                   children: [
-                                    Icon(Icons.timer_outlined,
-                                        size: 14, color: color),
+                                    Icon(Icons.timer_outlined, size: 14, color: color),
                                     const SizedBox(width: 4),
                                     Text(
                                       ex['duration'] as String,
@@ -169,8 +191,11 @@ class _RelaxationScreenState extends State<RelaxationScreen> {
                         ),
                         const Padding(
                           padding: EdgeInsets.only(right: 16),
-                          child: Icon(Icons.play_circle_fill,
-                              color: AppTheme.primary, size: 36),
+                          child: Icon(
+                            Icons.play_circle_fill,
+                            color: AppTheme.primary,
+                            size: 36,
+                          ),
                         ),
                       ],
                     ),
@@ -203,8 +228,10 @@ class _ExerciseDetailScreenState extends State<_ExerciseDetailScreen>
   int _totalTimeLeft = 0;
   int _currentCycle = 0;
   Timer? _timer;
+
   late AnimationController _breatheController;
   late Animation<double> _breatheAnim;
+
 
   List<Map<String, dynamic>> get steps =>
       List<Map<String, dynamic>>.from(widget.exercise['steps'] as List);
@@ -216,7 +243,8 @@ class _ExerciseDetailScreenState extends State<_ExerciseDetailScreen>
   void initState() {
     super.initState();
     _totalTimeLeft = totalDuration;
-    _stepTimeLeft = (steps.first['duration'] as int);
+    _stepTimeLeft = steps.first['duration'] as int;
+
     _breatheController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 4),
@@ -250,32 +278,39 @@ class _ExerciseDetailScreenState extends State<_ExerciseDetailScreen>
       _currentCycle = 0;
       _stepTimeLeft = steps.first['duration'] as int;
     });
+
     _breatheController.repeat(reverse: true);
     _timer = Timer.periodic(const Duration(seconds: 1), _tick);
   }
 
   void _tick(Timer t) {
-    if (!mounted) { t.cancel(); return; }
+    if (!mounted) {
+      t.cancel();
+      return;
+    }
+
     setState(() {
       if (_totalTimeLeft > 0) _totalTimeLeft--;
+
       if (_stepTimeLeft > 1) {
         _stepTimeLeft--;
+        return;
+      }
+
+      // Move to next step
+      if (_currentStep < steps.length - 1) {
+        _currentStep++;
+        _stepTimeLeft = steps[_currentStep]['duration'] as int;
+      } else if (_currentCycle < cycles - 1) {
+        _currentCycle++;
+        _currentStep = 1; // Skip preparation step
+        _stepTimeLeft = steps[_currentStep]['duration'] as int;
       } else {
-        // Move to next step
-        if (_currentStep < steps.length - 1) {
-          _currentStep++;
-          _stepTimeLeft = steps[_currentStep]['duration'] as int;
-        } else if (_currentCycle < cycles - 1) {
-          _currentCycle++;
-          _currentStep = 1; // Skip preparation step
-          _stepTimeLeft = steps[_currentStep]['duration'] as int;
-        } else {
-          // Done
-          t.cancel();
-          _breatheController.stop();
-          _isPlaying = false;
-          _isDone = true;
-        }
+        // Done
+        t.cancel();
+        _breatheController.stop();
+        _isPlaying = false;
+        _isDone = true;
       }
     });
   }
@@ -289,6 +324,7 @@ class _ExerciseDetailScreenState extends State<_ExerciseDetailScreen>
   @override
   Widget build(BuildContext context) {
     final step = steps[_currentStep];
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -304,7 +340,8 @@ class _ExerciseDetailScreenState extends State<_ExerciseDetailScreen>
             children: [
               // AppBar
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
                     IconButton(
@@ -379,6 +416,7 @@ class _ExerciseDetailScreenState extends State<_ExerciseDetailScreen>
                             },
                           ),
                           const SizedBox(height: 32),
+
                           // Current phase
                           if (_isPlaying) ...[
                             Container(
@@ -398,6 +436,7 @@ class _ExerciseDetailScreenState extends State<_ExerciseDetailScreen>
                             ),
                             const SizedBox(height: 16),
                           ],
+
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 40),
                             child: Text(
@@ -412,6 +451,7 @@ class _ExerciseDetailScreenState extends State<_ExerciseDetailScreen>
                               ),
                             ),
                           ),
+
                           if (_isPlaying && cycles > 1) ...[
                             const SizedBox(height: 16),
                             Text(
@@ -422,7 +462,9 @@ class _ExerciseDetailScreenState extends State<_ExerciseDetailScreen>
                               ),
                             ),
                           ],
+
                           const SizedBox(height: 48),
+
                           // Controls
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -439,11 +481,11 @@ class _ExerciseDetailScreenState extends State<_ExerciseDetailScreen>
                                       _stepTimeLeft = steps.first['duration'] as int;
                                     });
                                   },
-                                  icon: const Icon(Icons.stop,
-                                      color: Colors.white),
-                                  label: Text('Stop',
-                                      style: GoogleFonts.poppins(
-                                          color: Colors.white)),
+                                  icon: const Icon(Icons.stop, color: Colors.white),
+                                  label: Text(
+                                    'Stop',
+                                    style: GoogleFonts.poppins(color: Colors.white),
+                                  ),
                                 ),
                               const SizedBox(width: 16),
                               GestureDetector(
@@ -472,6 +514,7 @@ class _ExerciseDetailScreenState extends State<_ExerciseDetailScreen>
                               ),
                             ],
                           ),
+
                           if (_isPlaying) ...[
                             const SizedBox(height: 24),
                             Text(
@@ -547,3 +590,4 @@ class _ExerciseDetailScreenState extends State<_ExerciseDetailScreen>
     );
   }
 }
+

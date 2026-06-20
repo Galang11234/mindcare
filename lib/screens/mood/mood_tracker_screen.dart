@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import '../../services/storage_service.dart';
+import 'package:provider/provider.dart';
+// import '../../services/storage_service.dart';
+
+import '../../services/cloud_service.dart';
+
 import '../../models/models.dart';
 import '../../utils/app_theme.dart';
+import '../../providers/user_provider.dart';
+
 
 class MoodTrackerScreen extends StatefulWidget {
   const MoodTrackerScreen({super.key});
@@ -31,9 +37,29 @@ class _MoodTrackerScreenState extends State<MoodTrackerScreen> {
   }
 
   Future<void> _loadEntries() async {
-    final entries = await StorageService.getMoodEntries();
-    if (mounted) setState(() { _entries = entries; _loading = false; });
+    // Ambil dari Supabase supaya statistik beranda ikut update.
+    final entries = await CloudService.getMoods(limit: 90);
+
+    // Konversi Map -> MoodEntry menggunakan model
+    final mapped = entries.map((m) {
+      final id = (m['id'] ?? DateTime.now().millisecondsSinceEpoch.toString()) as String;
+      return MoodEntry(
+        id: id,
+        moodLevel: (m['mood_level'] as int?) ?? 0,
+        moodLabel: (m['mood_label'] as String?) ?? '',
+        emoji: (m['emoji'] as String?) ?? '😊',
+        date: DateTime.tryParse(m['recorded_at'] ?? '') ?? DateTime.now(),
+        note: m['note'] as String?,
+        emotions: List<String>.from(m['emotions'] ?? []),
+      );
+    }).toList();
+
+    if (mounted) setState(() {
+      _entries = mapped;
+      _loading = false;
+    });
   }
+
 
   void _showAddMoodSheet() {
     showModalBottomSheet(
@@ -43,12 +69,28 @@ class _MoodTrackerScreenState extends State<MoodTrackerScreen> {
       builder: (ctx) => _AddMoodSheet(
         moods: _moods,
         onSave: (entry) async {
-          await StorageService.saveMoodEntry(entry);
-          _loadEntries();
+          // Simpan ke Supabase agar dashboard beranda ikut update.
+          final ok = await CloudService.saveMood(
+            moodLevel: entry.moodLevel,
+            moodLabel: entry.moodLabel,
+            emoji: entry.emoji,
+            emotions: entry.emotions,
+            note: entry.note,
+            date: entry.date,
+          );
+          if (ok) {
+            _loadEntries();
+          } else {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Gagal menyimpan mood. Silakan coba lagi.')),
+            );
+          }
         },
       ),
     );
   }
+
 
   Color _getMoodColor(int level) {
     return (_moods.firstWhere((m) => m['level'] == level)['color'] as Color);

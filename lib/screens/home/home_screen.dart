@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../providers/user_provider.dart';
 import '../../services/cloud_service.dart';
+
 import '../../utils/app_theme.dart';
+
 import '../subscription/subscription_screen.dart';
 import '../dass/dass_screen.dart';
 import '../chat/chat_screen.dart';
@@ -31,6 +33,19 @@ class _HomeScreenState extends State<HomeScreen> {
     _load();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Pastikan data dashboard mengikuti perubahan di provider (mis. setelah payment premium)
+    // tanpa harus restart aplikasi.
+    final user = context.read<UserProvider>();
+    if (!_loading && user.isLoggedIn) {
+      _load();
+    }
+  }
+
+
+
   Future<void> _load() async {
     final stats = await CloudService.getDashboardStats();
     if (mounted) setState(() { _stats = stats; _loading = false; });
@@ -55,6 +70,8 @@ class _HomeScreenState extends State<HomeScreen> {
         child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(child: _buildHeader(user)),
+            // Premium banner dihapus setelah user premium aktif (sesuai permintaan) 
+            // Banner dihapus saat user premium aktif
             if (!user.isPremium)
               SliverToBoxAdapter(child: _buildPremiumBanner()),
             SliverToBoxAdapter(child: _buildStatCards()),

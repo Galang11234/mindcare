@@ -19,7 +19,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   bool _loading = false;
   bool _checkingStatus = true;
 
-  // B2B (untuk ditampilkan)
   final _campusPlanPrice = 'Rp 5.000.000 / tahun';
   final _corporatePlanPrice = 'Rp 15.000.000 / tahun';
 
@@ -35,96 +34,47 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 
   Future<void> _subscribe() async {
-    final user = await AuthService.getUserProfile();
-    if (user == null) return;
-
     setState(() => _loading = true);
 
-    // Paksa UI stop setelah 15 detik walaupun request await menggantung.
-    bool timedOut = false;
-    Timer(const Duration(seconds: 15), () {
-      if (!mounted) return;
-      timedOut = true;
-      setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Timeout booking: coba lagi beberapa saat lagi.'),
-          backgroundColor: AppTheme.danger,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    });
+    // Ambil profil user, tapi TIDAK memblokir jika hasilnya null (kebal error)
+    final user = await AuthService.getUserProfile();
 
-    PaymentResult result;
-    try {
-      result = await PaymentService.createPayment(
-        planId: _selectedPlan,
-        userFullName: user.fullName,
-        userEmail: user.email,
-        userPhone: user.phone ?? '08100000000',
-      );
-    } catch (e) {
-      result = PaymentResult.error(e.toString());
-    }
+    final result = await PaymentService.createPayment(
+      planId: _selectedPlan,
+      userFullName: user?.fullName ?? 'Sobat MindCare',
+      userEmail: user?.email ?? 'demo@mindcare.app',
+      userPhone: user?.phone ?? '08000000000',
+    );
 
-    if (!mounted || timedOut) return;
-
+    if (!mounted) return;
     setState(() => _loading = false);
 
     if (result.isSuccess) {
-
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Pembayaran berhasil (Demo Mode)'),
+        SnackBar(
+          content: const Text('Pembayaran Berhasil! Akses Premium aktif 🎉'),
+          backgroundColor: AppTheme.success,
         ),
       );
-
       await _checkStatus();
-
-      if (mounted) {
-        setState(() {
-          _isPremium = true;
-        });
-      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(result.error ?? 'Gagal memproses pembayaran'),
           backgroundColor: AppTheme.danger,
-          behavior: SnackBarBehavior.floating,
         ),
       );
     }
-  }
-
-  void _showWaitingDialog(String orderId) {
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => _PaymentStatusDialog(orderId: orderId),
-    ).then((_) => _checkStatus());
   }
 
   @override
   Widget build(BuildContext context) {
     if (_checkingStatus) {
-      // UI sementara saat mengecek status premium.
-      // Jika spinner terlalu lama, tombol tidak akan muncul sehingga terasa “tidak bisa ditekan”.
       return Scaffold(
         backgroundColor: AppTheme.bg(context),
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              CircularProgressIndicator(),
-              SizedBox(height: 12),
-            ],
-          ),
-        ),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
-
 
     return Scaffold(
       backgroundColor: AppTheme.bg(context),
@@ -245,7 +195,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 ),
               ),
               child: Row(children: [
-                // Radio
                 Container(
                   width: 22, height: 22,
                   decoration: BoxDecoration(
@@ -338,7 +287,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           decoration: BoxDecoration(
             color: AppTheme.card(context), borderRadius: BorderRadius.circular(20)),
           child: Column(children: [
-            // Header
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
@@ -405,8 +353,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             Text('Paket Kampus & Korporat', style: GoogleFonts.nunito(
                 fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
             const SizedBox(height: 10),
-
-            // Kampus
             Text('Kampus — $_campusPlanPrice', style: GoogleFonts.poppins(
                 fontSize: 14, color: AppTheme.gold, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
@@ -425,10 +371,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     fontSize: 12, color: Colors.white70))),
               ]),
             )),
-
             const SizedBox(height: 14),
-
-            // Korporat
             Text('Korporat — $_corporatePlanPrice', style: GoogleFonts.poppins(
                 fontSize: 14, color: AppTheme.gold, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
@@ -448,23 +391,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     fontSize: 12, color: Colors.white70))),
               ]),
             )),
-
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.mail_outline, size: 16),
-                label: const Text('Hubungi Tim Sales'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.teal,
-                  side: BorderSide(color: AppTheme.teal),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: () {
-                  // launch mailto or WhatsApp
-                },
-              ),
-            ),
           ]),
         ),
       ]),
@@ -498,93 +424,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        Text('Pembayaran aman via Midtrans · GoPay · OVO · QRIS · Transfer Bank',
+        Text('Sistem pembayaran mode demo tersimulasi',
             textAlign: TextAlign.center,
             style: GoogleFonts.poppins(fontSize: 11, color: AppTheme.textLt(context))),
-        const SizedBox(height: 6),
-        Text('Bisa dibatalkan kapan saja · Tidak ada biaya tersembunyi',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(fontSize: 11, color: AppTheme.textLt(context))),
-        const SizedBox(height: 20),
-        // Payment method icons
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          for (final method in ['GoPay', 'OVO', 'DANA', 'QRIS', 'BCA', 'Mandiri'])
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppTheme.card(context),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.divider(context)),
-              ),
-              child: Text(method, style: GoogleFonts.poppins(
-                  fontSize: 9.5, fontWeight: FontWeight.w600, color: AppTheme.textMed(context))),
-            ),
-        ]),
-      ]),
-    );
-  }
-}
-
-// ── Payment Status Dialog ─────────────────────────────────────
-class _PaymentStatusDialog extends StatefulWidget {
-  final String orderId;
-  const _PaymentStatusDialog({required this.orderId});
-  @override
-  State<_PaymentStatusDialog> createState() => _PaymentStatusDialogState();
-}
-
-class _PaymentStatusDialogState extends State<_PaymentStatusDialog> {
-  String _status = 'pending';
-  bool _checking = false;
-
-  Future<void> _checkStatus() async {
-    setState(() => _checking = true);
-    final status = await PaymentService.checkPaymentStatus(widget.orderId);
-    if (mounted) setState(() { _status = status; _checking = false; });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isPaid = _status == 'paid';
-    return AlertDialog(
-      backgroundColor: AppTheme.card(context),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(isPaid ? '🎉' : '⏳', style: const TextStyle(fontSize: 52)),
-        const SizedBox(height: 12),
-        Text(
-          isPaid ? 'Pembayaran Berhasil!' : 'Menunggu Pembayaran',
-          style: GoogleFonts.nunito(fontSize: 20, fontWeight: FontWeight.w800,
-              color: AppTheme.text(context)),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          isPaid
-              ? 'Premium MindCare kamu sudah aktif! Nikmati semua fitur tanpa batas. 💙'
-              : 'Selesaikan pembayaran di halaman yang sudah dibuka, lalu tap "Cek Status".',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.poppins(fontSize: 13, color: AppTheme.textMed(context)),
-        ),
-        const SizedBox(height: 20),
-        if (!isPaid) ...[
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _checking ? null : _checkStatus,
-              child: _checking
-                  ? const SizedBox(width: 18, height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('🔄  Cek Status Pembayaran'),
-            ),
-          ),
-          const SizedBox(height: 8),
-        ],
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(isPaid ? 'Mulai Pakai Premium!' : 'Nanti Saja',
-              style: GoogleFonts.poppins(color: AppTheme.primary)),
-        ),
       ]),
     );
   }

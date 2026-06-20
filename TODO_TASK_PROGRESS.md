@@ -1,9 +1,8 @@
-# TODO Task Progress
+## Mood/Jurnal tidak tersimpan ke halaman
 
-- [ ] Update `JournalScreen` agar sepenuhnya theme-aware (hapus hardcode light).
-- [ ] Upgrade UI minor untuk konsistensi kartu/editor di `JournalScreen`.
-- [ ] Update `MoodTrackerScreen` agar sepenuhnya theme-aware (hapus hardcode light + bottom sheet).
-- [ ] Upgrade UI minor untuk konsistensi list & chip di `MoodTrackerScreen`.
-- [ ] Update `TODO.md` checklist sesuai progress.
-- [ ] Jalankan `flutter analyze` dan `flutter test`.
+- [ ] Analisis penyebab (mood/journal UI tidak terisi)
+- [ ] Update `CloudService` untuk perbaiki format field array (`emotions`, `tags`) dan tambahkan error log
+- [ ] Update `MoodTrackerScreen` supaya tampil SnackBar saat save mood gagal
+- [ ] Update `JournalScreen` supaya tampil SnackBar saat save jurnal gagal (tidak langsung pop)
+- [ ] Test manual: tambah mood & jurnal, pastikan halaman tampil data
 

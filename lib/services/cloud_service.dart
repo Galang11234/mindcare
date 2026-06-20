@@ -23,12 +23,19 @@ class CloudService {
         'mood_level': moodLevel,
         'mood_label': moodLabel,
         'emoji': emoji,
+        // Supabase: pastikan kolom emotions bertipe array/jsonb.
+        // Kalau di DB tipe text[]/jsonb, cara ini biasanya cocok.
         'emotions': emotions,
         'note': note,
         'recorded_at': (date ?? DateTime.now()).toIso8601String(),
       });
       return true;
-    } catch (_) { return false; }
+    } catch (e, s) {
+      // Jangan telan error agar UI/debug bisa tahu penyebabnya.
+      // ignore: avoid_print
+      print('CloudService.saveMood gagal: $e\n$s');
+      return false;
+    }
   }
 
   static Future<List<Map<String, dynamic>>> getMoods({int limit = 90}) async {
@@ -67,7 +74,9 @@ class CloudService {
         // Update
         await _sb.from('journal_entries').update({
           'title': title, 'content': content,
-          'mood': mood, 'tags': tags,
+          'mood': mood,
+          // Pastikan kolom tags bertipe text[]/jsonb di Supabase.
+          'tags': tags,
           'updated_at': DateTime.now().toIso8601String(),
         }).eq('id', id).eq('user_id', uid);
         return id;
@@ -89,7 +98,11 @@ class CloudService {
         if (res == null) return null;
         return res['id'] as String;
       }
-    } catch (_) { return null; }
+    } catch (e, s) {
+      // ignore: avoid_print
+      print('CloudService.saveJournal gagal: $e\n$s');
+      return null;
+    }
   }
 
   static Future<List<Map<String, dynamic>>> getJournals({int limit = 100}) async {
